@@ -1,6 +1,6 @@
 # GitHub Team Tracker - Frontend
 
-React frontend application for visualizing GitHub team contributions and productivity.
+React frontend application for visualizing GitHub team contributions and productivity with GitHub OAuth authentication.
 
 ## Quick Start
 
@@ -9,34 +9,143 @@ npm install
 npm run dev
 ```
 
-The development server runs on `http://localhost:3001` with hot reload.
+The development server runs on `http://localhost:3000` with hot reload.
+
+**First Time Setup:**
+1. Ensure backend is running on `http://localhost:3001`
+2. Navigate to `http://localhost:3000/login`
+3. Click "Sign in with GitHub" to authenticate
+4. After OAuth authorization, you'll be redirected to the dashboard
 
 ## Project Structure
 
 ```
 /frontend
 ├── src/
-│   ├── api.js                 - API client with localStorage caching
-│   ├── App.jsx                - Root component with routing
-│   ├── index.css              - Global styles
-│   ├── pages/                 - Page components
-│   │   ├── Teams.jsx          - Team list dashboard
-│   │   ├── Users.jsx          - User list page
-│   │   ├── TeamDetail.jsx     - Team detail with charts
-│   │   ├── TeamDetail.css     - Team detail styles
-│   │   ├── UserDetail.jsx     - User detail with charts
-│   │   └── UserDetail.css     - User detail styles
-│   ├── components/            - Reusable components
-│   │   └── LoadingSpinner.jsx - Loading indicator
-│   ├── hooks/                 - Custom React hooks
+│   ├── api.js                      - API client with caching and auth
+│   ├── App.jsx                     - Root component with routing and auth provider
+│   ├── index.css                   - Global styles
+│   ├── pages/                      - Page components
+│   │   ├── LoginPage.jsx           - GitHub OAuth login page
+│   │   ├── Teams.jsx               - Team list dashboard (protected)
+│   │   ├── Users.jsx               - User list page (protected)
+│   │   ├── TeamDetail.jsx          - Team detail with charts (protected)
+│   │   ├── TeamDetail.css          - Team detail styles
+│   │   ├── UserDetail.jsx          - User detail with charts (protected)
+│   │   └── UserDetail.css          - User detail styles
+│   ├── components/                 - Reusable components
+│   │   ├── ProtectedRoute.jsx      - Route authentication guard
+│   │   ├── LoadingSpinner.jsx      - Loading indicator
+│   │   └── Button.jsx              - Button component
+│   ├── hooks/                      - Custom React hooks
+│   │   ├── useAuth.jsx             - Authentication context provider
 │   │   └── useScrollRestoration.js - Scroll position restoration
-│   └── utils/                 - Utility functions
-│       └── dateChunking.js    - Date range chunking utilities
-├── vite.config.js             - Vite configuration
-└── package.json               - Dependencies and scripts
+│   └── utils/                      - Utility functions
+│       └── dateChunking.js         - Date range chunking utilities
+├── .env.development                - Development environment config
+├── vite.config.js                  - Vite configuration
+└── package.json                    - Dependencies and scripts
 ```
 
+## Authentication Architecture
+
+### Overview
+
+The frontend implements GitHub OAuth authentication with protected routes and global auth state management.
+
+### Key Components
+
+**1. Authentication Context (`src/hooks/useAuth.jsx`)**
+```javascript
+import { AuthProvider, useAuth } from './hooks/useAuth'
+
+// Provides global auth state:
+const { user, loading, checkAuth, logout } = useAuth()
+```
+
+- **user**: Current authenticated user object (or null)
+- **loading**: Boolean indicating if auth check is in progress
+- **checkAuth**: Function to re-check authentication status
+- **logout**: Function to logout and clear session
+
+**2. Protected Routes (`src/components/ProtectedRoute.jsx`)**
+```javascript
+<ProtectedRoute>
+  <Teams />
+</ProtectedRoute>
+```
+
+- Renders loading spinner during auth check
+- Redirects to `/login` if user not authenticated
+- Renders children if authenticated
+
+**3. Login Page (`src/pages/LoginPage.jsx`)**
+- Clean OAuth login UI with GitHub branding
+- "Sign in with GitHub" button initiates OAuth flow
+- Redirects to backend `/auth/github` endpoint
+
+**4. API Client Authentication (`src/api.js`)**
+```javascript
+// All requests include credentials for session cookies
+credentials: 'include'
+
+// Auth-specific methods:
+api.getCurrentUser()     // Fetch authenticated user
+api.checkAuthStatus()    // Check if authenticated
+api.logout()             // Logout and destroy session
+api.initiateLogin()      // Redirect to OAuth flow
+```
+
+- **getBackendBaseUrl()**: Smart URL handling for auth routes (`/auth`) vs API routes (`/api`)
+- **credentials: 'include'**: Sends session cookies with every request
+
+### Authentication Flow
+
+1. **Initial Load**: App wrapped in `<AuthProvider>` checks auth status on mount
+2. **Unauthenticated**: User redirected to `/login` by `<ProtectedRoute>`
+3. **Login Click**: `api.initiateLogin()` redirects to backend `/auth/github`
+4. **OAuth Authorization**: User authorizes app on GitHub
+5. **Callback**: Backend creates session, redirects to frontend root
+6. **Session Check**: `AuthProvider` calls `/auth/user` to get user data
+7. **Success**: User stored in React Context, protected routes accessible
+8. **Persistence**: Session cookie maintained across page refreshes
+
+### Route Protection
+
+```javascript
+// App.jsx
+<AuthProvider>
+  <Routes>
+    <Route path="/login" element={<LoginPage />} />
+    <Route path="/" element={<ProtectedRoute><Teams /></ProtectedRoute>} />
+    <Route path="/team/:teamSlug" element={<ProtectedRoute><TeamDetail /></ProtectedRoute>} />
+    <Route path="/user/:username" element={<ProtectedRoute><UserDetail /></ProtectedRoute>} />
+  </Routes>
+</AuthProvider>
+```
+
+All routes except `/login` require authentication.
+
+### State Management
+
+**Authentication State (`useAuth` hook)**:
+```javascript
+const [user, setUser] = useState(null)         // Current user object
+const [loading, setLoading] = useState(true)    // Auth check in progress
+```
+
+**API Client**:
+- Session cookies automatically sent with requests
+- No manual token management needed in frontend
+- Backend decrypts user's token for GitHub API calls
+
 ## Key Features
+
+### Authentication
+- **GitHub OAuth Login**: Secure authentication flow with GitHub
+- **Protected Routes**: All pages except login require authentication
+- **Session Persistence**: Login state maintained across refreshes
+- **Automatic Redirects**: Unauthenticated users redirected to login
 
 ### Data Visualization
 - **Time-Series Charts**: Interactive bar charts showing contributions over time
@@ -241,13 +350,23 @@ const chartData = useMemo(() => {
 
 ## Configuration
 
-### Vite Config (`vite.config.js`)
-- **Dev Server Port**: 3001
-- **API Proxy**: `/api` proxies to `http://localhost:3001`
-- **Hot Reload**: Enabled for JSX/CSS changes
+### Environment Variables (`.env.development`)
 
-### Environment Variables
-None required. API URL defaults to `/api` (proxied in dev, direct in production).
+```env
+# API URL for development (direct to backend)
+VITE_API_URL=http://localhost:3001/api
+```
+
+The API client uses this to construct requests:
+- **API routes**: `${VITE_API_URL}` → `http://localhost:3001/api`
+- **Auth routes**: Backend base URL → `http://localhost:3001/auth`
+
+The `getBackendBaseUrl()` method strips the `/api` suffix for auth routes.
+
+### Vite Config (`vite.config.js`)
+- **Dev Server Port**: 3000
+- **Hot Reload**: Enabled for JSX/CSS changes
+- **Build Output**: `/dist` directory (gitignored)
 
 ## Styling Conventions
 
