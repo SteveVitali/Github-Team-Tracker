@@ -45,19 +45,24 @@ class ApiClient {
       const cacheKey = this.getCacheKey(endpoint)
       const cached = localStorage.getItem(cacheKey)
 
-      if (!cached) return null
+      if (!cached) {
+        console.log(`❌ Cache MISS for ${endpoint} (not found)`)
+        return null
+      }
 
       const { data, timestamp, ttl } = JSON.parse(cached)
       const age = Date.now() - timestamp
 
       // Check if cache is expired (ttl of 0 means always expired)
       if (ttl !== undefined && ttl !== null && age > ttl) {
+        console.log(`❌ Cache MISS for ${endpoint} (expired: ${Math.round(age / 1000)}s old, TTL: ${Math.round(ttl / 1000)}s)`)
         localStorage.removeItem(cacheKey)
         return null
       }
 
       // Special case: if TTL is 0, cache should always be considered expired
       if (ttl === 0) {
+        console.log(`❌ Cache MISS for ${endpoint} (TTL is 0)`)
         localStorage.removeItem(cacheKey)
         return null
       }
@@ -65,7 +70,7 @@ class ApiClient {
       console.log(`✅ Cache HIT for ${endpoint} (age: ${Math.round(age / 1000)}s)`)
       return data
     } catch (error) {
-      console.warn('Cache read error:', error)
+      console.warn(`❌ Cache MISS for ${endpoint} (error: ${error.message})`)
       return null
     }
   }
@@ -194,6 +199,8 @@ class ApiClient {
       if (cached !== null) {
         return Promise.resolve(cached)
       }
+    } else {
+      console.log(`⚠️  Cache BYPASSED for ${endpoint}`)
     }
 
     // Make the request and cache the result
