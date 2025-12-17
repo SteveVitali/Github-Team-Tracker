@@ -1,0 +1,221 @@
+const API_URL = import.meta.env.VITE_API_URL || '/api'
+
+// Cache configuration
+const CACHE_PREFIX = 'api_cache_'
+const DEFAULT_CACHE_TTL = 60 * 60 * 1000 // 60 minutes in milliseconds
+
+class ApiClient {
+  constructor() {
+    this.cacheEnabled = true
+
+    // Auto-clear cache if DEFAULT_CACHE_TTL is 0 (development mode)
+    if (DEFAULT_CACHE_TTL === 0) {
+      console.log('🗑️  Cache TTL is 0, clearing all cache on startup')
+      this.clearCache()
+    }
+  }
+
+  /**
+   * Generate a cache key for a given endpoint
+   * Includes query params to ensure different queries are cached separately
+   */
+  getCacheKey(endpoint) {
+    // Normalize the endpoint to ensure consistent cache keys
+    // Parse URL to separate path and query params
+    const url = new URL(endpoint, 'http://placeholder.com')
+    const path = url.pathname
+
+    // Sort query params for consistent cache keys
+    const params = Array.from(url.searchParams.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, value]) => `${key}=${value}`)
+      .join('&')
+
+    const cacheKey = params ? `${path}?${params}` : path
+    return `${CACHE_PREFIX}${cacheKey}`
+  }
+
+  /**
+   * Get cached data if available and not expired
+   */
+  getFromCache(endpoint) {
+    if (!this.cacheEnabled) return null
+
+    try {
+      const cacheKey = this.getCacheKey(endpoint)
+      const cached = localStorage.getItem(cacheKey)
+
+      if (!cached) return null
+
+      const { data, timestamp, ttl } = JSON.parse(cached)
+      const age = Date.now() - timestamp
+
+      // Check if cache is expired (ttl of 0 means always expired)
+      if (ttl !== undefined && ttl !== null && age > ttl) {
+        localStorage.removeItem(cacheKey)
+        return null
+      }
+
+      // Special case: if TTL is 0, cache should always be considered expired
+      if (ttl === 0) {
+        localStorage.removeItem(cacheKey)
+        return null
+      }
+
+      console.log(`✅ Cache HIT for ${endpoint} (age: ${Math.round(age / 1000)}s)`)
+      return data
+    } catch (error) {
+      console.warn('Cache read error:', error)
+      return null
+    }
+  }
+
+  /**
+   * Store data in cache
+   */
+  setCache(endpoint, data, ttl = DEFAULT_CACHE_TTL) {
+    if (!this.cacheEnabled) return
+
+    try {
+      const cacheKey = this.getCacheKey(endpoint)
+      const cacheData = {
+        data,
+        timestamp: Date.now(),
+        ttl,
+      }
+      localStorage.setItem(cacheKey, JSON.stringify(cacheData))
+      console.log(`💾 Cached ${endpoint} (TTL: ${ttl / 1000}s)`)
+    } catch (error) {
+      console.warn('Cache write error:', error)
+      // If localStorage is full, clear old cache entries
+      if (error.name === 'QuotaExceededError') {
+        this.clearOldCache()
+      }
+    }
+  }
+
+  /**
+   * Clear all cached API responses
+   */
+  clearCache() {
+    try {
+      const keys = Object.keys(localStorage)
+      const cacheKeys = keys.filter(key => key.startsWith(CACHE_PREFIX))
+      cacheKeys.forEach(key => localStorage.removeItem(key))
+      console.log(`🗑️  Cleared ${cacheKeys.length} cache entries`)
+    } catch (error) {
+      console.warn('Cache clear error:', error)
+    }
+  }
+
+  /**
+   * Clear old cache entries (oldest first) to free up space
+   */
+  clearOldCache() {
+    try {
+      const keys = Object.keys(localStorage)
+      const cacheKeys = keys.filter(key => key.startsWith(CACHE_PREFIX))
+
+      // Parse and sort by timestamp
+      const entries = cacheKeys.map(key => {
+        try {
+          const { timestamp } = JSON.parse(localStorage.getItem(key))
+          return { key, timestamp }
+        } catch {
+          return { key, timestamp: 0 }
+        }
+      }).sort((a, b) => a.timestamp - b.timestamp)
+
+      // Remove oldest 25%
+      const toRemove = Math.ceil(entries.length * 0.25)
+      entries.slice(0, toRemove).forEach(({ key }) => {
+        localStorage.removeItem(key)
+      })
+
+      console.log(`🗑️  Cleared ${toRemove} old cache entries`)
+    } catch (error) {
+      console.warn('Old cache clear error:', error)
+    }
+  }
+
+  /**
+   * Disable cache for this instance
+   */
+  disableCache() {
+    this.cacheEnabled = false
+    return this
+  }
+
+  /**
+   * Enable cache for this instance
+   */
+  enableCache() {
+    this.cacheEnabled = true
+    return this
+  }
+
+  async request(endpoint, options = {}) {
+    const url = `${API_URL}${endpoint}`
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      ...options,
+    }
+
+    try {
+      const response = await fetch(url, config)
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Request failed' }))
+        throw new Error(error.message || `HTTP ${response.status}`)
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('API request failed:', error)
+      throw error
+    }
+  }
+
+  get(endpoint, options = {}) {
+    const { bypassCache = false, cacheTTL = DEFAULT_CACHE_TTL } = options
+
+    // Check cache first (unless bypassed)
+    if (!bypassCache) {
+      const cached = this.getFromCache(endpoint)
+      if (cached !== null) {
+        return Promise.resolve(cached)
+      }
+    }
+
+    // Make the request and cache the result
+    return this.request(endpoint, { ...options, method: 'GET' }).then(data => {
+      this.setCache(endpoint, data, cacheTTL)
+      return data
+    })
+  }
+
+  post(endpoint, data, options = {}) {
+    return this.request(endpoint, {
+      ...options,
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  put(endpoint, data, options = {}) {
+    return this.request(endpoint, {
+      ...options,
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  }
+
+  delete(endpoint, options = {}) {
+    return this.request(endpoint, { ...options, method: 'DELETE' })
+  }
+}
+
+export const api = new ApiClient()
