@@ -7,6 +7,7 @@ const DEFAULT_CACHE_TTL = 30 * 24 * 60 * 60 * 1000 // 30 days in milliseconds
 class ApiClient {
   constructor() {
     this.cacheEnabled = true
+    this.inFlightRequests = new Map() // Track in-flight requests to prevent duplicates
 
     // Auto-clear cache if DEFAULT_CACHE_TTL is 0 (development mode)
     if (DEFAULT_CACHE_TTL === 0) {
@@ -203,11 +204,28 @@ class ApiClient {
       console.log(`⚠️  Cache BYPASSED for ${endpoint}`)
     }
 
+    // Check if this request is already in-flight to prevent duplicates
+    const requestKey = endpoint // Use endpoint as key since GET requests are idempotent
+    if (this.inFlightRequests.has(requestKey)) {
+      console.log(`🔄 Request DEDUPED for ${endpoint} (already in-flight)`)
+      return this.inFlightRequests.get(requestKey)
+    }
+
     // Make the request and cache the result
-    return this.request(endpoint, { ...options, method: 'GET' }).then(data => {
-      this.setCache(endpoint, data, cacheTTL)
-      return data
-    })
+    const requestPromise = this.request(endpoint, { ...options, method: 'GET' })
+      .then(data => {
+        this.setCache(endpoint, data, cacheTTL)
+        return data
+      })
+      .finally(() => {
+        // Clean up in-flight tracking when request completes (success or failure)
+        this.inFlightRequests.delete(requestKey)
+      })
+
+    // Track this in-flight request
+    this.inFlightRequests.set(requestKey, requestPromise)
+
+    return requestPromise
   }
 
   post(endpoint, data, options = {}) {
