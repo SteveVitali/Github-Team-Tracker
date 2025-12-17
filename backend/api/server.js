@@ -1,7 +1,14 @@
 import express from 'express';
 import cors from 'cors';
+import session from 'express-session';
+import ConnectSqlite3 from 'connect-sqlite3';
+import helmet from 'helmet';
+import passport from '../lib/passport-config.js';
 import { config, validateConfig } from '../lib/config.js';
+import { initializeDatabase } from '../lib/database.js';
 import { initializeTracking, getTrackingData } from '../lib/api-tracker.js';
+import { attachUserToken, requireAuth } from '../lib/auth-middleware.js';
+import authRouter from './routes/auth.js';
 import teamsRouter from './routes/teams.js';
 import prsRouter from './routes/prs.js';
 import usersRouter from './routes/users.js';
@@ -10,12 +17,43 @@ import contributionsRouter from './routes/contributions.js';
 // Validate configuration on startup
 validateConfig();
 
+// Initialize database on startup
+initializeDatabase();
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
-app.use(cors());
+// Security middleware
+app.use(helmet());
+
+// CORS - Allow credentials for session cookies
+app.use(cors({
+  origin: config.FRONTEND_URL,
+  credentials: true
+}));
+
 app.use(express.json());
+
+// Session configuration
+const SQLiteStore = ConnectSqlite3(session);
+app.use(session({
+  store: new SQLiteStore({
+    db: 'sessions.db',
+    dir: './data'
+  }),
+  secret: config.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+  }
+}));
+
+// Passport authentication
+app.use(passport.initialize());
+app.use(passport.session());
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -50,7 +88,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint
+// Health check endpoint (public)
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -59,11 +97,17 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API routes
-app.use('/api/teams', teamsRouter);
-app.use('/api/prs', prsRouter);
-app.use('/api/users', usersRouter);
-app.use('/api/contributions', contributionsRouter);
+// Auth routes (public)
+app.use('/auth', authRouter);
+
+// Attach user tokens to all API requests
+app.use('/api', attachUserToken);
+
+// Protected API routes (require authentication)
+app.use('/api/teams', requireAuth, teamsRouter);
+app.use('/api/prs', requireAuth, prsRouter);
+app.use('/api/users', requireAuth, usersRouter);
+app.use('/api/contributions', requireAuth, contributionsRouter);
 
 // 404 handler
 app.use((req, res) => {
@@ -88,7 +132,14 @@ app.listen(PORT, () => {
   console.log(`📍 Running on http://localhost:${PORT}`);
   console.log(`🏢 Organization: ${config.GITHUB_ORG}`);
   console.log(`\n📚 Available endpoints:`);
+  console.log(`\n  Public:`);
   console.log(`   GET  /health`);
+  console.log(`   GET  /auth/status`);
+  console.log(`   GET  /auth/github`);
+  console.log(`   GET  /auth/github/callback`);
+  console.log(`\n  Authenticated:`);
+  console.log(`   GET  /auth/user`);
+  console.log(`   POST /auth/logout`);
   console.log(`   GET  /api/users`);
   console.log(`   GET  /api/teams`);
   console.log(`   GET  /api/teams/:teamSlug/members`);
