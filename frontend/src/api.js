@@ -2,7 +2,7 @@ const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 // Cache configuration
 const CACHE_PREFIX = 'api_cache_'
-const DEFAULT_CACHE_TTL = 60 * 60 * 1000 // 60 minutes in milliseconds
+const DEFAULT_CACHE_TTL = 30 * 24 * 60 * 60 * 1000 // 30 days in milliseconds
 
 class ApiClient {
   constructor() {
