@@ -4,7 +4,7 @@ import { api } from '../api'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import './TeamsList.css'
 
-export function TeamsList({ onCountChange }) {
+export function TeamsList({ onCountChange, bypassCache = false }) {
   const [teams, setTeams] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -15,7 +15,7 @@ export function TeamsList({ onCountChange }) {
   useEffect(() => {
     const fetchTeams = async () => {
       try {
-        const result = await api.get('/teams')
+        const result = await api.get('/teams', { bypassCache })
         const teamsList = result.teams || result || []
 
         // Initialize teams without sorting yet
@@ -31,7 +31,7 @@ export function TeamsList({ onCountChange }) {
         // Fetch members for each team
         const memberPromises = teamsList.map(async (team) => {
           try {
-            const membersData = await api.get(`/teams/${team.slug}/members`)
+            const membersData = await api.get(`/teams/${team.slug}/members`, { bypassCache })
             const members = membersData.members || []
 
             // Update state with this team's member data
@@ -82,7 +82,7 @@ export function TeamsList({ onCountChange }) {
     }
 
     fetchTeams()
-  }, [onCountChange])
+  }, [onCountChange, bypassCache])
 
   // Sort teams by member count (using loaded data)
   const sortedTeams = [...teams].sort((a, b) => {

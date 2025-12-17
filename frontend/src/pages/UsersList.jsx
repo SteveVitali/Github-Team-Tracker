@@ -4,7 +4,7 @@ import { api } from '../api'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import './UsersList.css'
 
-export function UsersList({ onCountChange }) {
+export function UsersList({ onCountChange, bypassCache = false }) {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -14,7 +14,7 @@ export function UsersList({ onCountChange }) {
     const fetchUsers = async () => {
       try {
         // Try to fetch all users - the backend might need to implement this endpoint
-        const result = await api.get('/users')
+        const result = await api.get('/users', { bypassCache })
         const usersList = result.users || result || []
         setUsers(usersList)
 
@@ -30,7 +30,7 @@ export function UsersList({ onCountChange }) {
     }
 
     fetchUsers()
-  }, [onCountChange])
+  }, [onCountChange, bypassCache])
 
   const filteredUsers = users.filter((user) => {
     const query = searchQuery.toLowerCase()
