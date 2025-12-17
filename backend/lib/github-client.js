@@ -2,9 +2,21 @@ import { Octokit } from '@octokit/rest';
 import { config } from './config.js';
 import { trackApiCall } from './api-tracker.js';
 
-const octokit = new Octokit({
+// Default Octokit instance with system token
+const defaultOctokit = new Octokit({
   auth: config.GITHUB_TOKEN,
 });
+
+/**
+ * Get an Octokit instance with the specified token
+ * Falls back to default instance if no token provided
+ */
+function getOctokit(token) {
+  if (token && token !== config.GITHUB_TOKEN) {
+    return new Octokit({ auth: token });
+  }
+  return defaultOctokit;
+}
 
 // Utility function to delay execution
 function sleep(ms) {
@@ -47,8 +59,9 @@ async function throttledRequest(fn) {
 /**
  * Get all members of an organization (with pagination)
  */
-export async function getAllOrgMembers(org) {
+export async function getAllOrgMembers(org, token = null) {
   try {
+    const client = getOctokit(token);
     const members = [];
     let page = 1;
     let hasMore = true;
@@ -56,7 +69,7 @@ export async function getAllOrgMembers(org) {
     while (hasMore) {
       trackApiCall('REST:orgs.listMembers');
       const response = await throttledRequest(() =>
-        octokit.rest.orgs.listMembers({
+        client.rest.orgs.listMembers({
           org,
           per_page: 100,
           page,
@@ -78,11 +91,12 @@ export async function getAllOrgMembers(org) {
 /**
  * List all available teams in an organization
  */
-export async function listAvailableTeams(org) {
+export async function listAvailableTeams(org, token = null) {
   try {
+    const client = getOctokit(token);
     trackApiCall('REST:teams.list');
     const response = await throttledRequest(() =>
-      octokit.rest.teams.list({
+      client.rest.teams.list({
         org,
         per_page: 100,
       })
@@ -97,8 +111,9 @@ export async function listAvailableTeams(org) {
 /**
  * Get all teams in an organization (with pagination)
  */
-export async function getAllTeams(org) {
+export async function getAllTeams(org, token = null) {
   try {
+    const client = getOctokit(token);
     const teams = [];
     let page = 1;
     let hasMore = true;
@@ -106,7 +121,7 @@ export async function getAllTeams(org) {
     while (hasMore) {
       trackApiCall('REST:teams.list');
       const response = await throttledRequest(() =>
-        octokit.rest.teams.list({
+        client.rest.teams.list({
           org,
           per_page: 100,
           page,
@@ -128,8 +143,9 @@ export async function getAllTeams(org) {
 /**
  * Get members of a specific team
  */
-export async function getTeamMembers(org, teamSlug) {
+export async function getTeamMembers(org, teamSlug, token = null) {
   try {
+    const client = getOctokit(token);
     const members = [];
     let page = 1;
     let hasMore = true;
@@ -137,7 +153,7 @@ export async function getTeamMembers(org, teamSlug) {
     while (hasMore) {
       trackApiCall('REST:teams.listMembersInOrg');
       const response = await throttledRequest(() =>
-        octokit.rest.teams.listMembersInOrg({
+        client.rest.teams.listMembersInOrg({
           org,
           team_slug: teamSlug,
           per_page: 100,
@@ -160,7 +176,7 @@ export async function getTeamMembers(org, teamSlug) {
       console.error(`   Required scopes: read:org, repo`);
       console.error(`\n   Attempting to list available teams...`);
 
-      const teams = await listAvailableTeams(org);
+      const teams = await listAvailableTeams(org, token);
       if (teams && teams.length > 0) {
         console.error(`\n   Available teams you have access to:`);
         teams.forEach(team => {
@@ -182,12 +198,13 @@ export async function getTeamMembers(org, teamSlug) {
 /**
  * Get open pull requests for a user in an organization
  */
-export async function getUserPullRequests(org, username) {
+export async function getUserPullRequests(org, username, token = null) {
   try {
+    const client = getOctokit(token);
     trackApiCall('REST:search.issuesAndPullRequests');
     const query = `org:${org} author:${username} is:pr is:open`;
     const response = await throttledRequest(() =>
-      octokit.rest.search.issuesAndPullRequests({
+      client.rest.search.issuesAndPullRequests({
         q: query,
         per_page: 100,
         sort: 'updated',
@@ -227,7 +244,9 @@ export function groupPRsByRepo(prs) {
  * Search for commits by a user in an organization within a date range
  * Note: GitHub Search API has a hard limit of 1000 total results
  */
-export async function searchUserCommits(org, username, fromDate, toDate) {
+export async function searchUserCommits(org, username, fromDate, toDate, token = null) {
+  const client = getOctokit(token);
+
   // Format dates for GitHub search (YYYY-MM-DD)
   const from = fromDate.toISOString().split('T')[0];
   const to = toDate.toISOString().split('T')[0];
@@ -242,7 +261,7 @@ export async function searchUserCommits(org, username, fromDate, toDate) {
   while (hasMore && page <= 10) {
     trackApiCall('REST:search.commits');
     const response = await throttledRequest(() =>
-      octokit.rest.search.commits({
+      client.rest.search.commits({
         q: query,
         per_page: 100,
         page,
@@ -265,7 +284,9 @@ export async function searchUserCommits(org, username, fromDate, toDate) {
  * Search for PR reviews by a user in an organization
  * Note: GitHub Search API has a hard limit of 1000 total results
  */
-export async function searchUserReviews(org, username, fromDate, toDate) {
+export async function searchUserReviews(org, username, fromDate, toDate, token = null) {
+  const client = getOctokit(token);
+
   // Format dates for GitHub search
   const from = fromDate.toISOString().split('T')[0];
   const to = toDate.toISOString().split('T')[0];
@@ -281,7 +302,7 @@ export async function searchUserReviews(org, username, fromDate, toDate) {
   while (hasMore && page <= 10) {
     trackApiCall('REST:search.issuesAndPullRequests');
     const response = await throttledRequest(() =>
-      octokit.rest.search.issuesAndPullRequests({
+      client.rest.search.issuesAndPullRequests({
         q: query,
         per_page: 100,
         page,
@@ -304,7 +325,9 @@ export async function searchUserReviews(org, username, fromDate, toDate) {
  * Search for PRs created by a user in an organization within a date range
  * Note: GitHub Search API has a hard limit of 1000 total results
  */
-export async function searchUserPRs(org, username, fromDate, toDate) {
+export async function searchUserPRs(org, username, fromDate, toDate, token = null) {
+  const client = getOctokit(token);
+
   // Format dates for GitHub search
   const from = fromDate.toISOString().split('T')[0];
   const to = toDate.toISOString().split('T')[0];
@@ -320,7 +343,7 @@ export async function searchUserPRs(org, username, fromDate, toDate) {
   while (hasMore && page <= 10) {
     trackApiCall('REST:search.issuesAndPullRequests');
     const response = await throttledRequest(() =>
-      octokit.rest.search.issuesAndPullRequests({
+      client.rest.search.issuesAndPullRequests({
         q: query,
         per_page: 100,
         page,

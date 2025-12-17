@@ -2,16 +2,33 @@ import { graphql } from '@octokit/graphql';
 import { config } from './config.js';
 import { trackApiCall } from './api-tracker.js';
 
-const graphqlWithAuth = graphql.defaults({
+// Default GraphQL client with system token
+const defaultGraphqlClient = graphql.defaults({
   headers: {
     authorization: `token ${config.GITHUB_TOKEN}`,
   },
 });
 
 /**
+ * Get a GraphQL client with the specified token
+ * Falls back to default client if no token provided
+ */
+function getGraphqlClient(token) {
+  if (token && token !== config.GITHUB_TOKEN) {
+    return graphql.defaults({
+      headers: {
+        authorization: `token ${token}`,
+      },
+    });
+  }
+  return defaultGraphqlClient;
+}
+
+/**
  * Get organization ID by organization login
  */
-async function getOrganizationId(orgLogin) {
+async function getOrganizationId(orgLogin, token = null) {
+  const client = getGraphqlClient(token);
   const query = `
     query($login: String!) {
       organization(login: $login) {
@@ -22,7 +39,7 @@ async function getOrganizationId(orgLogin) {
 
   try {
     trackApiCall('GraphQL:organizationId');
-    const result = await graphqlWithAuth(query, { login: orgLogin });
+    const result = await client(query, { login: orgLogin });
     return result.organization.id;
   } catch (error) {
     console.error(`Error fetching organization ID for ${orgLogin}:`, error.message);
@@ -36,14 +53,16 @@ async function getOrganizationId(orgLogin) {
  * @param {string} from - ISO 8601 date string (start of range)
  * @param {string} to - ISO 8601 date string (end of range)
  * @param {string} orgLogin - Organization login (optional, for filtering)
+ * @param {string} token - GitHub access token (optional)
  * @returns {Object} Contributions data
  */
-export async function getUserContributions(username, from, to, orgLogin = null) {
+export async function getUserContributions(username, from, to, orgLogin = null, token = null) {
+  const client = getGraphqlClient(token);
   let organizationID = null;
 
   // If org is specified, get its ID for filtering
   if (orgLogin) {
-    organizationID = await getOrganizationId(orgLogin);
+    organizationID = await getOrganizationId(orgLogin, token);
   }
 
   const query = `
@@ -170,7 +189,7 @@ export async function getUserContributions(username, from, to, orgLogin = null) 
 
   try {
     trackApiCall('GraphQL:userContributions');
-    const result = await graphqlWithAuth(query, {
+    const result = await client(query, {
       username,
       from,
       to,
@@ -297,7 +316,7 @@ export async function getUserContributions(username, from, to, orgLogin = null) 
 /**
  * Get user contributions for the last N days
  */
-export async function getUserContributionsLastNDays(username, days = 30, orgLogin = null) {
+export async function getUserContributionsLastNDays(username, days = 30, orgLogin = null, token = null) {
   const to = new Date();
   const from = new Date();
   from.setDate(from.getDate() - days);
@@ -306,14 +325,15 @@ export async function getUserContributionsLastNDays(username, days = 30, orgLogi
     username,
     from.toISOString(),
     to.toISOString(),
-    orgLogin
+    orgLogin,
+    token
   );
 }
 
 /**
  * Get user contributions for the current month
  */
-export async function getUserContributionsThisMonth(username, orgLogin = null) {
+export async function getUserContributionsThisMonth(username, orgLogin = null, token = null) {
   const now = new Date();
   const from = new Date(now.getFullYear(), now.getMonth(), 1);
   const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
@@ -322,14 +342,15 @@ export async function getUserContributionsThisMonth(username, orgLogin = null) {
     username,
     from.toISOString(),
     to.toISOString(),
-    orgLogin
+    orgLogin,
+    token
   );
 }
 
 /**
  * Get user contributions for the last month
  */
-export async function getUserContributionsLastMonth(username, orgLogin = null) {
+export async function getUserContributionsLastMonth(username, orgLogin = null, token = null) {
   const now = new Date();
   const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const to = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
@@ -338,7 +359,8 @@ export async function getUserContributionsLastMonth(username, orgLogin = null) {
     username,
     from.toISOString(),
     to.toISOString(),
-    orgLogin
+    orgLogin,
+    token
   );
 }
 
@@ -347,9 +369,12 @@ export async function getUserContributionsLastMonth(username, orgLogin = null) {
  * @param {string[]} usernames - Array of GitHub usernames
  * @param {string} orgLogin - Organization login to filter by (optional)
  * @param {number} maxPerUser - Maximum PRs to fetch per user (default: 100)
+ * @param {string} token - GitHub access token (optional)
  * @returns {Object} Map of username -> PRs array
  */
-export async function getOpenPRsForUsers(usernames, orgLogin = null, maxPerUser = 100) {
+export async function getOpenPRsForUsers(usernames, orgLogin = null, maxPerUser = 100, token = null) {
+  const client = getGraphqlClient(token);
+
   // GraphQL has query size limits, so batch users if needed
   const BATCH_SIZE = 20; // Process 20 users at a time
   const batches = [];
@@ -404,7 +429,7 @@ export async function getOpenPRsForUsers(usernames, orgLogin = null, maxPerUser 
 
     try {
       trackApiCall('GraphQL:batchUserPRs');
-      const result = await graphqlWithAuth(query);
+      const result = await client(query);
 
       // Process results for each user in this batch
       batch.forEach((username, index) => {
@@ -470,10 +495,11 @@ export async function getOpenPRsForUsers(usernames, orgLogin = null, maxPerUser 
  * Get open PRs for users and group by repository
  * @param {string[]} usernames - Array of GitHub usernames
  * @param {string} orgLogin - Organization login to filter by (optional)
+ * @param {string} token - GitHub access token (optional)
  * @returns {Object} Formatted results with PRs grouped by repo per user
  */
-export async function getOpenPRsForUsersGrouped(usernames, orgLogin = null) {
-  const results = await getOpenPRsForUsers(usernames, orgLogin);
+export async function getOpenPRsForUsersGrouped(usernames, orgLogin = null, token = null) {
+  const results = await getOpenPRsForUsers(usernames, orgLogin, 100, token);
 
   // Transform to grouped format
   const grouped = {};
@@ -512,9 +538,12 @@ export async function getOpenPRsForUsersGrouped(usernames, orgLogin = null) {
  * @param {string} from - ISO 8601 date string (start of range)
  * @param {string} to - ISO 8601 date string (end of range)
  * @param {string} orgLogin - Organization login to filter by (optional)
+ * @param {string} token - GitHub access token (optional)
  * @returns {Object} Map of username -> contributions data
  */
-export async function getContributionsForUsers(usernames, from, to, orgLogin = null) {
+export async function getContributionsForUsers(usernames, from, to, orgLogin = null, token = null) {
+  const client = getGraphqlClient(token);
+
   // Contributions queries are larger, so use smaller batch size
   const BATCH_SIZE = 10;
   const batches = [];
@@ -648,7 +677,7 @@ export async function getContributionsForUsers(usernames, from, to, orgLogin = n
 
     try {
       trackApiCall('GraphQL:batchUserContributions');
-      const result = await graphqlWithAuth(query);
+      const result = await client(query);
 
       // Process results for each user in this batch
       batch.forEach((username, index) => {
@@ -791,7 +820,7 @@ export async function getContributionsForUsers(usernames, from, to, orgLogin = n
 /**
  * Get contributions for multiple users in the last N days
  */
-export async function getContributionsForUsersLastNDays(usernames, days = 30, orgLogin = null) {
+export async function getContributionsForUsersLastNDays(usernames, days = 30, orgLogin = null, token = null) {
   const to = new Date();
   const from = new Date();
   from.setDate(from.getDate() - days);
@@ -800,14 +829,15 @@ export async function getContributionsForUsersLastNDays(usernames, days = 30, or
     usernames,
     from.toISOString(),
     to.toISOString(),
-    orgLogin
+    orgLogin,
+    token
   );
 }
 
 /**
  * Get contributions for multiple users in the last month
  */
-export async function getContributionsForUsersLastMonth(usernames, orgLogin = null) {
+export async function getContributionsForUsersLastMonth(usernames, orgLogin = null, token = null) {
   const now = new Date();
   const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const to = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
@@ -816,6 +846,7 @@ export async function getContributionsForUsersLastMonth(usernames, orgLogin = nu
     usernames,
     from.toISOString(),
     to.toISOString(),
-    orgLogin
+    orgLogin,
+    token
   );
 }
