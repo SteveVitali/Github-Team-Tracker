@@ -161,6 +161,7 @@ class ApiClient {
         'Content-Type': 'application/json',
         ...options.headers,
       },
+      credentials: 'include', // Include cookies for session management
       ...options,
     }
 
@@ -215,6 +216,49 @@ class ApiClient {
 
   delete(endpoint, options = {}) {
     return this.request(endpoint, { ...options, method: 'DELETE' })
+  }
+
+  // Authentication methods (these use direct backend URLs, not API_URL prefix)
+  // Auth routes are at /auth, not /api/auth, so we use the backend base URL
+  getBackendBaseUrl() {
+    // Extract base URL from VITE_API_URL or use default
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+    // Remove /api suffix if present
+    return apiUrl.replace(/\/api$/, '')
+  }
+
+  async checkAuthStatus() {
+    const backendUrl = this.getBackendBaseUrl()
+    const response = await fetch(`${backendUrl}/auth/status`, {
+      credentials: 'include',
+    })
+    return response.json()
+  }
+
+  async getCurrentUser() {
+    const backendUrl = this.getBackendBaseUrl()
+    const response = await fetch(`${backendUrl}/auth/user`, {
+      credentials: 'include',
+    })
+    if (!response.ok) {
+      throw new Error('Not authenticated')
+    }
+    return response.json()
+  }
+
+  async logout() {
+    const backendUrl = this.getBackendBaseUrl()
+    const response = await fetch(`${backendUrl}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+    return response.json()
+  }
+
+  // GitHub OAuth flow is handled by redirecting to backend
+  initiateLogin() {
+    const backendUrl = this.getBackendBaseUrl()
+    window.location.href = `${backendUrl}/auth/github`
   }
 }
 
