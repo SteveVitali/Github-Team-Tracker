@@ -1,0 +1,19 @@
+.homepage {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.homepage-header {
+  margin-bottom: 2rem;
+}
+
+.homepage-header h2 {
+  font-size: 2rem;
+  color: #24292e;
+  margin-bottom: 0.5rem;
+}
+
+.homepage-header p {
+  font-size: 1.125rem;
+  color: #586069;
+}

@@ -1,0 +1,83 @@
+.users-list-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.users-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.user-card {
+  display: block;
+  padding: 1.25rem;
+  background: white;
+  border-radius: 8px;
+  border: 2px solid #d0d7de;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.2s;
+}
+
+.user-card:hover {
+  border-color: #0969da;
+  box-shadow: 0 4px 12px rgba(9, 105, 218, 0.1);
+  transform: translateY(-2px);
+}
+
+.user-card-content {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.user-avatar-small {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid #d0d7de;
+  flex-shrink: 0;
+}
+
+.user-avatar-placeholder {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0969da, #0550ae);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.user-info-small {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name-small {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #24292e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-username-small {
+  font-size: 0.875rem;
+  color: #586069;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.error-hint {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: #586069;
+}
