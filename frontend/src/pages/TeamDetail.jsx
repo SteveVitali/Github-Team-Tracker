@@ -18,7 +18,10 @@ export function TeamDetail() {
   const [refreshingLatest, setRefreshingLatest] = useState(false)
   const [teamPRs, setTeamPRs] = useState([]) // All PRs from all team members
   const [collapsedSections, setCollapsedSections] = useState({ closed: true, merged: true, open: false })
-  const [chartView, setChartView] = useState('by-type') // 'total' or 'by-type'
+  const [collapsedUsers, setCollapsedUsers] = useState({}) // Track which user sections are collapsed
+  const [isStacked, setIsStacked] = useState(true)
+  const [visibleSeries, setVisibleSeries] = useState({ prs: true, commits: true, reviews: true })
+  const [chunkStats, setChunkStats] = useState({}) // { 'YYYY-MM-DD': { prs: N, commits: N, reviews: N } }
 
   // Restore scroll position when returning to this page
   useScrollRestoration(`team-detail-${teamSlug}`)
@@ -49,6 +52,7 @@ export function TeamDetail() {
       // Reset member stats and team PRs before fetching new period
       setMemberStats({})
       setTeamPRs([])
+      setChunkStats({})
       setFetchProgress({ loaded: 0, total: 0 })
 
       // Get date range for selected period
@@ -113,6 +117,18 @@ export function TeamDetail() {
                   })
                 }
 
+                // Update chunk stats (team-level aggregation)
+                const chunkKey = fromStr
+                setChunkStats(prev => ({
+                  ...prev,
+                  [chunkKey]: {
+                    ...prev[chunkKey],
+                    prs: (prev[chunkKey]?.prs || 0) + prsCount,
+                    from: chunk.from,
+                    to: chunk.to
+                  }
+                }))
+
                 counter.value++
                 setFetchProgress({ loaded: counter.value, total: totalRequests })
 
@@ -138,6 +154,18 @@ export function TeamDetail() {
                 const commitsCount = commitsData.commits?.length || 0
                 userCommitsCount += commitsCount
 
+                // Update chunk stats (team-level aggregation)
+                const chunkKey = fromStr
+                setChunkStats(prev => ({
+                  ...prev,
+                  [chunkKey]: {
+                    ...prev[chunkKey],
+                    commits: (prev[chunkKey]?.commits || 0) + commitsCount,
+                    from: chunk.from,
+                    to: chunk.to
+                  }
+                }))
+
                 counter.value++
                 setFetchProgress({ loaded: counter.value, total: totalRequests })
 
@@ -162,6 +190,18 @@ export function TeamDetail() {
                 const reviewsData = await api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`)
                 const reviewsCount = reviewsData.reviews?.length || 0
                 userReviewsCount += reviewsCount
+
+                // Update chunk stats (team-level aggregation)
+                const chunkKey = fromStr
+                setChunkStats(prev => ({
+                  ...prev,
+                  [chunkKey]: {
+                    ...prev[chunkKey],
+                    reviews: (prev[chunkKey]?.reviews || 0) + reviewsCount,
+                    from: chunk.from,
+                    to: chunk.to
+                  }
+                }))
 
                 counter.value++
                 setFetchProgress({ loaded: counter.value, total: totalRequests })
@@ -215,6 +255,11 @@ export function TeamDetail() {
       console.log(`[TeamDetail] Refreshing latest chunk: ${fromStr} to ${toStr}`)
 
       const members = team.members
+      const totalRequests = members.length * 3
+      let completed = 0
+
+      // Show progress
+      setFetchProgress({ loaded: 0, total: totalRequests })
 
       // Fetch latest chunk for all members in parallel
       await Promise.all(
@@ -223,17 +268,29 @@ export function TeamDetail() {
 
           try {
             const [prsData, commitsData, reviewsData] = await Promise.all([
-              api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`, { bypassCache: true }),
-              api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`, { bypassCache: true }),
-              api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`, { bypassCache: true })
+              api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`, { bypassCache: true }).then(data => {
+                completed++
+                setFetchProgress({ loaded: completed, total: totalRequests })
+                return data
+              }),
+              api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`, { bypassCache: true }).then(data => {
+                completed++
+                setFetchProgress({ loaded: completed, total: totalRequests })
+                return data
+              }),
+              api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`, { bypassCache: true }).then(data => {
+                completed++
+                setFetchProgress({ loaded: completed, total: totalRequests })
+                return data
+              })
             ])
 
-            // Update member stats (counts will be recalculated based on all data)
-            // Since we're just counting, we can simply trigger a re-fetch by not doing anything here
-            // The deduplication in the main fetch will handle it
             console.log(`[TeamDetail] Refreshed latest chunk for ${username}`)
           } catch (err) {
             console.error(`[TeamDetail] Error refreshing latest chunk for ${username}:`, err)
+            // Still increment progress on error
+            completed += 3
+            setFetchProgress({ loaded: completed, total: totalRequests })
           }
         })
       )
@@ -243,35 +300,71 @@ export function TeamDetail() {
       console.error('[TeamDetail] Error refreshing latest chunk:', err)
     } finally {
       setRefreshingLatest(false)
+      // Clear progress after a brief delay
+      setTimeout(() => {
+        setFetchProgress({ loaded: 0, total: 0 })
+      }, 500)
     }
   }
 
-  // Group and sort team PRs by status (must be before early returns)
+  // Group and sort team PRs by status, then by user (must be before early returns)
   const groupedTeamPRs = useMemo(() => {
     const groups = {
-      open: [],
-      merged: [],
-      closed: []
+      open: {},
+      merged: {},
+      closed: {}
     }
 
     teamPRs.forEach(pr => {
       // Determine single status: Merged > Closed > Open
+      let statusKey
       if (pr.mergedAt) {
-        groups.merged.push(pr)
+        statusKey = 'merged'
       } else if (pr.state?.toLowerCase() === 'closed') {
-        groups.closed.push(pr)
+        statusKey = 'closed'
       } else {
-        groups.open.push(pr)
+        statusKey = 'open'
       }
+
+      // Group by user within each status
+      const author = pr.author
+      if (!groups[statusKey][author]) {
+        groups[statusKey][author] = []
+      }
+      groups[statusKey][author].push(pr)
     })
 
-    // Sort each group by date descending (newest first)
-    Object.keys(groups).forEach(key => {
-      groups[key].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    // Sort PRs within each user group by date (newest first)
+    // And convert to sorted array of [author, prs] pairs sorted by PR count descending
+    const result = {}
+    Object.keys(groups).forEach(statusKey => {
+      const userGroups = groups[statusKey]
+
+      // Sort PRs within each user group
+      Object.keys(userGroups).forEach(author => {
+        userGroups[author].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+      })
+
+      // Convert to array and sort by PR count descending
+      result[statusKey] = Object.entries(userGroups)
+        .sort((a, b) => b[1].length - a[1].length) // Sort by PR count descending
     })
 
-    return groups
+    return result
   }, [teamPRs])
+
+  // Transform chunkStats into time-series chart data
+  const timeSeriesChartData = useMemo(() => {
+    return Object.entries(chunkStats)
+      .map(([dateKey, stats]) => ({
+        name: dateKey, // YYYY-MM-DD format
+        PRs: stats.prs || 0,
+        Commits: stats.commits || 0,
+        Reviews: stats.reviews || 0,
+        Total: (stats.prs || 0) + (stats.commits || 0) + (stats.reviews || 0)
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)) // Sort by date ascending (chronological)
+  }, [chunkStats])
 
   // Transform memberStats into chart data (sorted by total contributions descending)
   const chartData = useMemo(() => {
@@ -329,6 +422,14 @@ export function TeamDetail() {
     setCollapsedSections(prev => ({
       ...prev,
       [section]: !prev[section]
+    }))
+  }
+
+  const toggleUserSection = (statusKey, author) => {
+    const key = `${statusKey}-${author}`
+    setCollapsedUsers(prev => ({
+      ...prev,
+      [key]: !prev[key]
     }))
   }
 
@@ -408,24 +509,128 @@ export function TeamDetail() {
           </div>
         </div>
 
-        {/* Contributions Chart */}
+        {/* Time-Series Contributions Chart */}
+        {timeSeriesChartData.length > 0 && (
+          <div className="contributions-chart-section">
+            <div className="chart-header">
+              <h3>Team Contributions Over Time</h3>
+              <div className="chart-controls">
+                <div className="chart-view-toggle">
+                  <button
+                    onClick={() => setIsStacked(!isStacked)}
+                    className={`toggle-button ${!isStacked ? 'toggle-button-active' : ''}`}
+                  >
+                    Grouped
+                  </button>
+                </div>
+                <div className="series-toggles">
+                  <label className="series-toggle">
+                    <input
+                      type="checkbox"
+                      checked={visibleSeries.prs}
+                      onChange={(e) => setVisibleSeries(prev => ({ ...prev, prs: e.target.checked }))}
+                    />
+                    <span className="series-label" style={{ color: '#0969da' }}>PRs</span>
+                  </label>
+                  <label className="series-toggle">
+                    <input
+                      type="checkbox"
+                      checked={visibleSeries.commits}
+                      onChange={(e) => setVisibleSeries(prev => ({ ...prev, commits: e.target.checked }))}
+                    />
+                    <span className="series-label" style={{ color: '#2da44e' }}>Commits</span>
+                  </label>
+                  <label className="series-toggle">
+                    <input
+                      type="checkbox"
+                      checked={visibleSeries.reviews}
+                      onChange={(e) => setVisibleSeries(prev => ({ ...prev, reviews: e.target.checked }))}
+                    />
+                    <span className="series-label" style={{ color: '#bf3989' }}>Reviews</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <ResponsiveContainer width="100%" height={400}>
+              <BarChart data={timeSeriesChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="name"
+                  angle={-45}
+                  textAnchor="end"
+                  height={80}
+                  interval={0}
+                  style={{ fontSize: '0.75rem' }}
+                />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                {visibleSeries.prs && (
+                  <Bar
+                    dataKey="PRs"
+                    fill="#0969da"
+                    stackId={isStacked ? 'stack' : undefined}
+                  />
+                )}
+                {visibleSeries.commits && (
+                  <Bar
+                    dataKey="Commits"
+                    fill="#2da44e"
+                    stackId={isStacked ? 'stack' : undefined}
+                  />
+                )}
+                {visibleSeries.reviews && (
+                  <Bar
+                    dataKey="Reviews"
+                    fill="#bf3989"
+                    stackId={isStacked ? 'stack' : undefined}
+                  />
+                )}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* Per-Member Contributions Chart */}
         {chartData.length > 0 && (
           <div className="contributions-chart-section">
             <div className="chart-header">
-              <h3>Team Contributions</h3>
-              <div className="chart-view-toggle">
-                <button
-                  onClick={() => setChartView('total')}
-                  className={`toggle-button ${chartView === 'total' ? 'toggle-button-active' : ''}`}
-                >
-                  Total
-                </button>
-                <button
-                  onClick={() => setChartView('by-type')}
-                  className={`toggle-button ${chartView === 'by-type' ? 'toggle-button-active' : ''}`}
-                >
-                  By Type
-                </button>
+              <h3>Contributions by Team Member</h3>
+              <div className="chart-controls">
+                <div className="chart-view-toggle">
+                  <button
+                    onClick={() => setIsStacked(!isStacked)}
+                    className={`toggle-button ${!isStacked ? 'toggle-button-active' : ''}`}
+                  >
+                    Grouped
+                  </button>
+                </div>
+                <div className="series-toggles">
+                  <label className="series-toggle">
+                    <input
+                      type="checkbox"
+                      checked={visibleSeries.prs}
+                      onChange={(e) => setVisibleSeries(prev => ({ ...prev, prs: e.target.checked }))}
+                    />
+                    <span className="series-label" style={{ color: '#0969da' }}>PRs</span>
+                  </label>
+                  <label className="series-toggle">
+                    <input
+                      type="checkbox"
+                      checked={visibleSeries.commits}
+                      onChange={(e) => setVisibleSeries(prev => ({ ...prev, commits: e.target.checked }))}
+                    />
+                    <span className="series-label" style={{ color: '#2da44e' }}>Commits</span>
+                  </label>
+                  <label className="series-toggle">
+                    <input
+                      type="checkbox"
+                      checked={visibleSeries.reviews}
+                      onChange={(e) => setVisibleSeries(prev => ({ ...prev, reviews: e.target.checked }))}
+                    />
+                    <span className="series-label" style={{ color: '#bf3989' }}>Reviews</span>
+                  </label>
+                </div>
               </div>
             </div>
             <ResponsiveContainer width="100%" height={400}>
@@ -441,15 +646,27 @@ export function TeamDetail() {
                 />
                 <YAxis />
                 <Tooltip />
-                {chartView === 'by-type' && <Legend />}
-                {chartView === 'total' ? (
-                  <Bar dataKey="Total" fill="#0969da" />
-                ) : (
-                  <>
-                    <Bar dataKey="PRs" stackId="a" fill="#0969da" />
-                    <Bar dataKey="Commits" stackId="a" fill="#2da44e" />
-                    <Bar dataKey="Reviews" stackId="a" fill="#bf3989" />
-                  </>
+                <Legend />
+                {visibleSeries.prs && (
+                  <Bar
+                    dataKey="PRs"
+                    fill="#0969da"
+                    stackId={isStacked ? 'stack' : undefined}
+                  />
+                )}
+                {visibleSeries.commits && (
+                  <Bar
+                    dataKey="Commits"
+                    fill="#2da44e"
+                    stackId={isStacked ? 'stack' : undefined}
+                  />
+                )}
+                {visibleSeries.reviews && (
+                  <Bar
+                    dataKey="Reviews"
+                    fill="#bf3989"
+                    stackId={isStacked ? 'stack' : undefined}
+                  />
                 )}
               </BarChart>
             </ResponsiveContainer>
@@ -539,25 +756,48 @@ export function TeamDetail() {
                   onClick={() => toggleSection('open')}
                 >
                   <span className="pr-group-title">
-                    Open ({groupedTeamPRs.open.length})
+                    Open ({groupedTeamPRs.open.reduce((sum, [_, prs]) => sum + prs.length, 0)})
                   </span>
                   <span className={`expand-icon ${collapsedSections.open ? '' : 'expanded'}`}>▼</span>
                 </button>
                 {!collapsedSections.open && (
-                  <div className="team-prs-list">
-                    {groupedTeamPRs.open.map((pr) => (
-                      <div key={pr.id} className="team-pr-card">
-                        <a href={pr.url} target="_blank" rel="noopener noreferrer" className="pr-title">
-                          {pr.title}
-                        </a>
-                        <span className="status-badge status-open">Open</span>
-                        {pr.draft && <span className="meta-badge draft">Draft</span>}
-                        <Link to={`/user/${pr.author}`} className="pr-author">@{pr.author}</Link>
-                        <span className="pr-repo">{pr.repository}</span>
-                        <span className="pr-number">#{pr.number}</span>
-                        <span className="pr-date">{new Date(pr.createdAt).toLocaleDateString()}</span>
-                      </div>
-                    ))}
+                  <div className="user-grouped-prs">
+                    {groupedTeamPRs.open.map(([author, prs]) => {
+                      const userKey = `open-${author}`
+                      const isExpanded = !collapsedUsers[userKey]
+                      return (
+                        <div key={author} className="user-pr-group">
+                          <button
+                            className="user-pr-header"
+                            onClick={() => toggleUserSection('open', author)}
+                          >
+                            <div className="user-pr-header-content">
+                              <Link to={`/user/${author}`} className="user-pr-author" onClick={(e) => e.stopPropagation()}>
+                                @{author}
+                              </Link>
+                              <span className="user-pr-count">{prs.length}</span>
+                            </div>
+                            <span className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>▼</span>
+                          </button>
+                          {isExpanded && (
+                            <div className="team-prs-list">
+                              {prs.map((pr) => (
+                                <div key={pr.id} className="team-pr-card">
+                                  <span className="pr-repo">{pr.repository}</span>
+                                  <a href={pr.url} target="_blank" rel="noopener noreferrer" className="pr-title">
+                                    {pr.title}
+                                  </a>
+                                  <span className="status-badge status-open">Open</span>
+                                  {pr.draft && <span className="meta-badge draft">Draft</span>}
+                                  <span className="pr-number">#{pr.number}</span>
+                                  <span className="pr-date">{new Date(pr.createdAt).toLocaleDateString()}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -571,24 +811,47 @@ export function TeamDetail() {
                   onClick={() => toggleSection('merged')}
                 >
                   <span className="pr-group-title">
-                    Merged ({groupedTeamPRs.merged.length})
+                    Merged ({groupedTeamPRs.merged.reduce((sum, [_, prs]) => sum + prs.length, 0)})
                   </span>
                   <span className={`expand-icon ${collapsedSections.merged ? '' : 'expanded'}`}>▼</span>
                 </button>
                 {!collapsedSections.merged && (
-                  <div className="team-prs-list">
-                    {groupedTeamPRs.merged.map((pr) => (
-                      <div key={pr.id} className="team-pr-card">
-                        <a href={pr.url} target="_blank" rel="noopener noreferrer" className="pr-title">
-                          {pr.title}
-                        </a>
-                        <span className="status-badge status-merged">Merged</span>
-                        <Link to={`/user/${pr.author}`} className="pr-author">@{pr.author}</Link>
-                        <span className="pr-repo">{pr.repository}</span>
-                        <span className="pr-number">#{pr.number}</span>
-                        <span className="pr-date">{new Date(pr.createdAt).toLocaleDateString()}</span>
-                      </div>
-                    ))}
+                  <div className="user-grouped-prs">
+                    {groupedTeamPRs.merged.map(([author, prs]) => {
+                      const userKey = `merged-${author}`
+                      const isExpanded = !collapsedUsers[userKey]
+                      return (
+                        <div key={author} className="user-pr-group">
+                          <button
+                            className="user-pr-header"
+                            onClick={() => toggleUserSection('merged', author)}
+                          >
+                            <div className="user-pr-header-content">
+                              <Link to={`/user/${author}`} className="user-pr-author" onClick={(e) => e.stopPropagation()}>
+                                @{author}
+                              </Link>
+                              <span className="user-pr-count">{prs.length}</span>
+                            </div>
+                            <span className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>▼</span>
+                          </button>
+                          {isExpanded && (
+                            <div className="team-prs-list">
+                              {prs.map((pr) => (
+                                <div key={pr.id} className="team-pr-card">
+                                  <span className="pr-repo">{pr.repository}</span>
+                                  <a href={pr.url} target="_blank" rel="noopener noreferrer" className="pr-title">
+                                    {pr.title}
+                                  </a>
+                                  <span className="status-badge status-merged">Merged</span>
+                                  <span className="pr-number">#{pr.number}</span>
+                                  <span className="pr-date">{new Date(pr.createdAt).toLocaleDateString()}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -602,24 +865,47 @@ export function TeamDetail() {
                   onClick={() => toggleSection('closed')}
                 >
                   <span className="pr-group-title">
-                    Closed ({groupedTeamPRs.closed.length})
+                    Closed ({groupedTeamPRs.closed.reduce((sum, [_, prs]) => sum + prs.length, 0)})
                   </span>
                   <span className={`expand-icon ${collapsedSections.closed ? '' : 'expanded'}`}>▼</span>
                 </button>
                 {!collapsedSections.closed && (
-                  <div className="team-prs-list">
-                    {groupedTeamPRs.closed.map((pr) => (
-                      <div key={pr.id} className="team-pr-card">
-                        <a href={pr.url} target="_blank" rel="noopener noreferrer" className="pr-title">
-                          {pr.title}
-                        </a>
-                        <span className="status-badge status-closed">Closed</span>
-                        <Link to={`/user/${pr.author}`} className="pr-author">@{pr.author}</Link>
-                        <span className="pr-repo">{pr.repository}</span>
-                        <span className="pr-number">#{pr.number}</span>
-                        <span className="pr-date">{new Date(pr.createdAt).toLocaleDateString()}</span>
-                      </div>
-                    ))}
+                  <div className="user-grouped-prs">
+                    {groupedTeamPRs.closed.map(([author, prs]) => {
+                      const userKey = `closed-${author}`
+                      const isExpanded = !collapsedUsers[userKey]
+                      return (
+                        <div key={author} className="user-pr-group">
+                          <button
+                            className="user-pr-header"
+                            onClick={() => toggleUserSection('closed', author)}
+                          >
+                            <div className="user-pr-header-content">
+                              <Link to={`/user/${author}`} className="user-pr-author" onClick={(e) => e.stopPropagation()}>
+                                @{author}
+                              </Link>
+                              <span className="user-pr-count">{prs.length}</span>
+                            </div>
+                            <span className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>▼</span>
+                          </button>
+                          {isExpanded && (
+                            <div className="team-prs-list">
+                              {prs.map((pr) => (
+                                <div key={pr.id} className="team-pr-card">
+                                  <span className="pr-repo">{pr.repository}</span>
+                                  <a href={pr.url} target="_blank" rel="noopener noreferrer" className="pr-title">
+                                    {pr.title}
+                                  </a>
+                                  <span className="status-badge status-closed">Closed</span>
+                                  <span className="pr-number">#{pr.number}</span>
+                                  <span className="pr-date">{new Date(pr.createdAt).toLocaleDateString()}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>

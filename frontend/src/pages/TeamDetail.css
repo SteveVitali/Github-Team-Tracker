@@ -578,8 +578,10 @@
 .chart-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
 
 .chart-header h3 {
@@ -588,9 +590,45 @@
   color: #24292e;
 }
 
+.chart-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
 .chart-view-toggle {
   display: flex;
   gap: 0.5rem;
+}
+
+.series-toggles {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background: #f6f8fa;
+  border-radius: 6px;
+}
+
+.series-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.series-toggle input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+.series-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .toggle-button {
@@ -622,4 +660,73 @@
   background: #0550ae;
   border-color: #0550ae;
   color: white;
+}
+
+/* User-grouped PRs */
+.user-grouped-prs {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.user-pr-group {
+  border-bottom: 1px solid #e8ebed;
+}
+
+.user-pr-group:last-child {
+  border-bottom: none;
+}
+
+.user-pr-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1.25rem;
+  background: white;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-family: inherit;
+}
+
+.user-pr-header:hover {
+  background: #f6f8fa;
+}
+
+.user-pr-header-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.user-pr-author {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: #0969da;
+  text-decoration: none;
+  text-align: left;
+}
+
+.user-pr-author:hover {
+  text-decoration: underline;
+}
+
+.user-pr-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 0.5rem;
+  background: #0969da;
+  color: white;
+  border-radius: 12px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.user-pr-group .team-prs-list {
+  border-top: 1px solid #e8ebed;
 }
