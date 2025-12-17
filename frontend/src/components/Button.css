@@ -1,0 +1,35 @@
+.button {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button-primary {
+  background-color: #0969da;
+  color: white;
+}
+
+.button-primary:hover:not(:disabled) {
+  background-color: #0860ca;
+}
+
+.button-secondary {
+  background-color: #f6f8fa;
+  color: #24292e;
+  border: 1px solid #d0d7de;
+}
+
+.button-secondary:hover:not(:disabled) {
+  background-color: #f3f4f6;
+  border-color: #bfc6cc;
+}
