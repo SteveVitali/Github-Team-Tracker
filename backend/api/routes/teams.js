@@ -14,7 +14,7 @@ const router = express.Router();
  */
 router.get('/', async (req, res, next) => {
   try {
-    const teams = await getAllTeams(config.GITHUB_ORG);
+    const teams = await getAllTeams(config.GITHUB_ORG, req.userToken);
 
     res.json({
       organization: config.GITHUB_ORG,
@@ -40,7 +40,7 @@ router.get('/', async (req, res, next) => {
 router.get('/:teamSlug/members', async (req, res, next) => {
   try {
     const { teamSlug } = req.params;
-    const members = await getTeamMembers(config.GITHUB_ORG, teamSlug);
+    const members = await getTeamMembers(config.GITHUB_ORG, teamSlug, req.userToken);
 
     res.json({
       organization: config.GITHUB_ORG,
@@ -68,11 +68,11 @@ router.get('/:teamSlug/prs', async (req, res, next) => {
     const { teamSlug } = req.params;
 
     // Get team members
-    const members = await getTeamMembers(config.GITHUB_ORG, teamSlug);
+    const members = await getTeamMembers(config.GITHUB_ORG, teamSlug, req.userToken);
     const usernames = members.map(m => m.login);
 
     // Use GraphQL to batch fetch all PRs efficiently
-    const prsByUser = await getOpenPRsForUsers(usernames, config.GITHUB_ORG);
+    const prsByUser = await getOpenPRsForUsers(usernames, config.GITHUB_ORG, 100, req.userToken);
 
     // Transform to response format
     const userData = Object.entries(prsByUser)
@@ -115,14 +115,14 @@ router.get('/:teamSlug/prs', async (req, res, next) => {
 router.get('/membership-report', async (req, res, next) => {
   try {
     // Fetch all teams
-    const teams = await getAllTeams(config.GITHUB_ORG);
+    const teams = await getAllTeams(config.GITHUB_ORG, req.userToken);
 
     // Map of username -> list of teams
     const userTeams = new Map();
 
     // Fetch members for each team
     for (const team of teams) {
-      const members = await getTeamMembers(config.GITHUB_ORG, team.slug);
+      const members = await getTeamMembers(config.GITHUB_ORG, team.slug, req.userToken);
 
       for (const member of members) {
         if (!userTeams.has(member.login)) {

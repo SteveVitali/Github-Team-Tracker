@@ -10,7 +10,7 @@ const router = express.Router();
  */
 router.get('/', async (req, res, next) => {
   try {
-    const members = await getAllOrgMembers(config.GITHUB_ORG);
+    const members = await getAllOrgMembers(config.GITHUB_ORG, req.userToken);
 
     res.json({
       organization: config.GITHUB_ORG,

@@ -25,7 +25,7 @@ router.post('/by-teams', async (req, res, next) => {
 
     // Fetch all team members
     for (const teamSlug of teamSlugs) {
-      const members = await getTeamMembers(config.GITHUB_ORG, teamSlug);
+      const members = await getTeamMembers(config.GITHUB_ORG, teamSlug, req.userToken);
 
       for (const member of members) {
         allMembers.add(member.login);
@@ -35,7 +35,7 @@ router.post('/by-teams', async (req, res, next) => {
     const usernames = Array.from(allMembers);
 
     // Use GraphQL to batch fetch all PRs efficiently
-    const prsByUser = await getOpenPRsForUsersGrouped(usernames, config.GITHUB_ORG);
+    const prsByUser = await getOpenPRsForUsersGrouped(usernames, config.GITHUB_ORG, req.userToken);
 
     // Transform to response format
     const userData = Object.entries(prsByUser)
@@ -82,7 +82,7 @@ router.get('/user/:username', async (req, res, next) => {
     const { username } = req.params;
 
     // Use GraphQL for efficient fetching
-    const prsByUser = await getOpenPRsForUsersGrouped([username], config.GITHUB_ORG);
+    const prsByUser = await getOpenPRsForUsersGrouped([username], config.GITHUB_ORG, req.userToken);
     const data = prsByUser[username];
 
     if (data.error) {

@@ -30,7 +30,7 @@ router.get('/user/:username/commits', async (req, res, next) => {
       fromDate.setDate(fromDate.getDate() - lookbackDays);
     }
 
-    const commits = await searchUserCommits(orgLogin, username, fromDate, toDate);
+    const commits = await searchUserCommits(orgLogin, username, fromDate, toDate, req.userToken);
 
     res.json({
       organization: orgLogin,
@@ -91,7 +91,7 @@ router.get('/user/:username/reviews', async (req, res, next) => {
       fromDate.setDate(fromDate.getDate() - lookbackDays);
     }
 
-    const reviews = await searchUserReviews(orgLogin, username, fromDate, toDate);
+    const reviews = await searchUserReviews(orgLogin, username, fromDate, toDate, req.userToken);
 
     res.json({
       organization: orgLogin,
@@ -145,7 +145,7 @@ router.get('/user/:username/prs', async (req, res, next) => {
       fromDate.setDate(fromDate.getDate() - lookbackDays);
     }
 
-    const prs = await searchUserPRs(orgLogin, username, fromDate, toDate);
+    const prs = await searchUserPRs(orgLogin, username, fromDate, toDate, req.userToken);
 
     res.json({
       organization: orgLogin,
