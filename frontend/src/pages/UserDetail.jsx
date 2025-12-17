@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { chunkDateRange, getDateRangeForPeriod, formatDateISO, getChunkStart, getChunkEnd } from '../utils/dateChunking'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import './UserDetail.css'
 
 export function UserDetail() {
@@ -18,6 +19,9 @@ export function UserDetail() {
   const [period, setPeriod] = useState('30days')
   const [fetchProgress, setFetchProgress] = useState({ loaded: 0, total: 0 })
   const [refreshingLatest, setRefreshingLatest] = useState(false)
+  const [chunkStats, setChunkStats] = useState({}) // { 'YYYY-MM-DD': { prs: N, commits: N, reviews: N } }
+  const [isStacked, setIsStacked] = useState(true)
+  const [visibleSeries, setVisibleSeries] = useState({ prs: true, commits: true, reviews: true })
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -29,6 +33,7 @@ export function UserDetail() {
       setPrs({ prs: [], count: 0 })
       setCommits({ commits: [], count: 0 })
       setReviews({ reviews: [], count: 0 })
+      setChunkStats({})
 
       try {
         // Get date range for the selected period
@@ -36,30 +41,161 @@ export function UserDetail() {
         const { from, to } = getDateRangeForPeriod(period)
         console.log('[UserDetail] Date range:', from, 'to', to)
 
-        // Chunk the date range into weekly segments
+        // Chunk the date range into segments
         const chunks = chunkDateRange(from, to)
 
         console.log(`Date range: ${from.toISOString()} to ${to.toISOString()}`)
         console.log(`Number of chunks: ${chunks.length}`)
 
         // Safety check: if too many chunks, bail out
-        if (chunks.length > 100) {
+        if (chunks.length > 100 && period !== 'all-time') {
           throw new Error(`Too many date chunks (${chunks.length}). This would create too many API requests.`)
         }
 
-        setFetchProgress({ loaded: 0, total: chunks.length * 3 }) // 3 endpoints per chunk
+        // For all-time queries, process chunks sequentially from newest to oldest
+        // Stop when we hit N consecutive empty chunks
+        const EMPTY_CHUNK_THRESHOLD = 3
 
-        // Fetch all chunks in parallel with progress tracking
-        const allPrs = []
-        const allCommits = []
-        const allReviews = []
+        if (period === 'all-time') {
+          // Reverse chunks to go from newest to oldest
+          const reversedChunks = [...chunks].reverse()
+          let consecutiveEmptyChunks = 0
+          let processedChunks = 0
 
-        // Use a counter object to avoid race conditions
-        const counter = { value: 0 }
+          setFetchProgress({ loaded: 0, total: reversedChunks.length * 3 })
 
-        // Process chunks in parallel
-        await Promise.all(
-          chunks.map(async (chunk) => {
+          for (const chunk of reversedChunks) {
+            if (consecutiveEmptyChunks >= EMPTY_CHUNK_THRESHOLD) {
+              console.log(`[UserDetail] Stopping all-time fetch: ${EMPTY_CHUNK_THRESHOLD} consecutive empty chunks detected`)
+              break
+            }
+
+            const fromStr = formatDateISO(chunk.from)
+            const toStr = formatDateISO(chunk.to)
+
+            let chunkPrsCount = 0
+            let chunkCommitsCount = 0
+            let chunkReviewsCount = 0
+
+            try {
+              const prsData = await api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`)
+              if (prsData.prs && prsData.prs.length === 100) {
+                console.error(`🚨 PAGINATION LIMIT HIT! PR endpoint returned exactly 100 items for ${username} (${fromStr} to ${toStr}). Chunk size may be too large!`)
+              }
+              chunkPrsCount = (prsData.prs || []).length
+              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+
+              const chunkKey = fromStr
+              setChunkStats(prev => ({
+                ...prev,
+                [chunkKey]: {
+                  ...prev[chunkKey],
+                  prs: chunkPrsCount,
+                  from: chunk.from,
+                  to: chunk.to
+                }
+              }))
+
+              setPrs(prev => {
+                const existingIds = new Set(prev.prs.map(pr => pr.id))
+                const newPrs = (prsData.prs || []).filter(pr => !existingIds.has(pr.id))
+                return {
+                  prs: [...prev.prs, ...newPrs],
+                  count: prev.prs.length + newPrs.length
+                }
+              })
+            } catch (err) {
+              console.error(`Error fetching PRs for ${fromStr} to ${toStr}:`, err)
+              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+            }
+
+            try {
+              const commitsData = await api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`)
+              if (commitsData.commits && commitsData.commits.length === 100) {
+                console.error(`🚨 PAGINATION LIMIT HIT! Commits endpoint returned exactly 100 items for ${username} (${fromStr} to ${toStr}). Chunk size may be too large!`)
+              }
+              chunkCommitsCount = (commitsData.commits || []).length
+              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+
+              const chunkKey = fromStr
+              setChunkStats(prev => ({
+                ...prev,
+                [chunkKey]: {
+                  ...prev[chunkKey],
+                  commits: chunkCommitsCount,
+                  from: chunk.from,
+                  to: chunk.to
+                }
+              }))
+
+              setCommits(prev => {
+                const existingShas = new Set(prev.commits.map(c => c.sha))
+                const newCommits = (commitsData.commits || []).filter(c => !existingShas.has(c.sha))
+                return {
+                  commits: [...prev.commits, ...newCommits],
+                  count: prev.commits.length + newCommits.length
+                }
+              })
+            } catch (err) {
+              console.error(`Error fetching commits for ${fromStr} to ${toStr}:`, err)
+              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+            }
+
+            try {
+              const reviewsData = await api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`)
+              if (reviewsData.reviews && reviewsData.reviews.length === 100) {
+                console.error(`🚨 PAGINATION LIMIT HIT! Reviews endpoint returned exactly 100 items for ${username} (${fromStr} to ${toStr}). Chunk size may be too large!`)
+              }
+              chunkReviewsCount = (reviewsData.reviews || []).length
+              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+
+              const chunkKey = fromStr
+              setChunkStats(prev => ({
+                ...prev,
+                [chunkKey]: {
+                  ...prev[chunkKey],
+                  reviews: chunkReviewsCount,
+                  from: chunk.from,
+                  to: chunk.to
+                }
+              }))
+
+              setReviews(prev => {
+                const existingIds = new Set(prev.reviews.map(r => r.id))
+                const newReviews = (reviewsData.reviews || []).filter(r => !existingIds.has(r.id))
+                return {
+                  reviews: [...prev.reviews, ...newReviews],
+                  count: prev.reviews.length + newReviews.length
+                }
+              })
+            } catch (err) {
+              console.error(`Error fetching reviews for ${fromStr} to ${toStr}:`, err)
+              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+            }
+
+            // Check if this chunk was empty
+            const chunkTotal = chunkPrsCount + chunkCommitsCount + chunkReviewsCount
+            if (chunkTotal === 0) {
+              consecutiveEmptyChunks++
+              console.log(`[UserDetail] Empty chunk ${fromStr} to ${toStr} (${consecutiveEmptyChunks}/${EMPTY_CHUNK_THRESHOLD})`)
+            } else {
+              consecutiveEmptyChunks = 0 // Reset counter when we find contributions
+            }
+
+            processedChunks++
+          }
+
+          console.log(`[UserDetail] All-time fetch complete: processed ${processedChunks}/${reversedChunks.length} chunks`)
+        } else {
+          // For non-all-time periods, fetch all chunks in parallel
+          setFetchProgress({ loaded: 0, total: chunks.length * 3 })
+
+          // Use a counter object to avoid race conditions
+          const counter = { value: 0 }
+
+          // Process chunks in parallel
+          await Promise.all(
+            chunks.map(async (chunk) => {
             const fromStr = formatDateISO(chunk.from)
             const toStr = formatDateISO(chunk.to)
 
@@ -72,9 +208,20 @@ export function UserDetail() {
                 console.error(`🚨 PAGINATION LIMIT HIT! PR endpoint returned exactly 100 items for ${username} (${fromStr} to ${toStr}). Chunk size may be too large!`)
               }
 
-              allPrs.push(...(prsData.prs || []))
               counter.value++
               setFetchProgress({ loaded: counter.value, total: chunks.length * 3 })
+
+              // Update chunk stats
+              const chunkKey = fromStr
+              setChunkStats(prev => ({
+                ...prev,
+                [chunkKey]: {
+                  ...prev[chunkKey],
+                  prs: (prsData.prs || []).length,
+                  from: chunk.from,
+                  to: chunk.to
+                }
+              }))
 
               // Progressively update UI with partial results (deduplicate by ID)
               setPrs(prev => {
@@ -100,9 +247,20 @@ export function UserDetail() {
                 console.error(`🚨 PAGINATION LIMIT HIT! Commits endpoint returned exactly 100 items for ${username} (${fromStr} to ${toStr}). Chunk size may be too large!`)
               }
 
-              allCommits.push(...(commitsData.commits || []))
               counter.value++
               setFetchProgress({ loaded: counter.value, total: chunks.length * 3 })
+
+              // Update chunk stats
+              const chunkKey = fromStr
+              setChunkStats(prev => ({
+                ...prev,
+                [chunkKey]: {
+                  ...prev[chunkKey],
+                  commits: (commitsData.commits || []).length,
+                  from: chunk.from,
+                  to: chunk.to
+                }
+              }))
 
               // Progressively update UI (deduplicate by SHA)
               setCommits(prev => {
@@ -128,9 +286,20 @@ export function UserDetail() {
                 console.error(`🚨 PAGINATION LIMIT HIT! Reviews endpoint returned exactly 100 items for ${username} (${fromStr} to ${toStr}). Chunk size may be too large!`)
               }
 
-              allReviews.push(...(reviewsData.reviews || []))
               counter.value++
               setFetchProgress({ loaded: counter.value, total: chunks.length * 3 })
+
+              // Update chunk stats
+              const chunkKey = fromStr
+              setChunkStats(prev => ({
+                ...prev,
+                [chunkKey]: {
+                  ...prev[chunkKey],
+                  reviews: (reviewsData.reviews || []).length,
+                  from: chunk.from,
+                  to: chunk.to
+                }
+              }))
 
               // Progressively update UI (deduplicate by ID)
               setReviews(prev => {
@@ -148,18 +317,20 @@ export function UserDetail() {
             }
           })
         )
-
-        // Set user info
-        setUserInfo({
-          username,
-          name: username,
-        })
-      } catch (err) {
-        setError(err.message)
-      } finally {
-        setLoading(false)
       }
+
+      // Set user info
+      setUserInfo({
+        username,
+        name: username,
+      })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+      setFetchProgress({ loaded: 0, total: 0 })
     }
+  }
 
     fetchUserData()
   }, [username, period])
@@ -179,11 +350,23 @@ export function UserDetail() {
 
       console.log(`[UserDetail] Refreshing latest chunk: ${fromStr} to ${toStr}`)
 
+      // Show progress
+      setFetchProgress({ loaded: 0, total: 3 })
+
       // Fetch latest chunk data with cache bypass
       const [prsData, commitsData, reviewsData] = await Promise.all([
-        api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`, { bypassCache: true }),
-        api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`, { bypassCache: true }),
-        api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`, { bypassCache: true })
+        api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`, { bypassCache: true }).then(data => {
+          setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+          return data
+        }),
+        api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`, { bypassCache: true }).then(data => {
+          setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+          return data
+        }),
+        api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`, { bypassCache: true }).then(data => {
+          setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+          return data
+        })
       ])
 
       // Update state with deduplication (prevents double-counting)
@@ -219,8 +402,25 @@ export function UserDetail() {
       console.error('[UserDetail] Error refreshing latest chunk:', err)
     } finally {
       setRefreshingLatest(false)
+      // Clear progress after a brief delay
+      setTimeout(() => {
+        setFetchProgress({ loaded: 0, total: 0 })
+      }, 500)
     }
   }
+
+  // Transform chunk stats into time-series chart data
+  const chartData = useMemo(() => {
+    return Object.entries(chunkStats)
+      .map(([dateKey, stats]) => ({
+        name: dateKey, // YYYY-MM-DD format
+        PRs: stats.prs || 0,
+        Commits: stats.commits || 0,
+        Reviews: stats.reviews || 0,
+        Total: (stats.prs || 0) + (stats.commits || 0) + (stats.reviews || 0)
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)) // Sort by date ascending (chronological)
+  }, [chunkStats])
 
   if (error) {
     return (
@@ -381,7 +581,7 @@ export function UserDetail() {
       <button onClick={() => navigate(-1)} className="back-button">← Back</button>
 
       {/* Progress bar at the top */}
-      {loading && fetchProgress.total > 0 && (
+      {fetchProgress.total > 0 && (
         <div className="fetch-progress-top">
           <div className="progress-bar-container">
             <div
@@ -429,6 +629,88 @@ export function UserDetail() {
           </button>
         </div>
       </div>
+
+      {/* Contributions Over Time Chart */}
+      {chartData.length > 0 && (
+        <div className="contributions-chart-section">
+          <div className="chart-header">
+            <h3>Contributions Over Time</h3>
+            <div className="chart-controls">
+              <div className="chart-view-toggle">
+                <button
+                  onClick={() => setIsStacked(!isStacked)}
+                  className={`toggle-button ${!isStacked ? 'toggle-button-active' : ''}`}
+                >
+                  Grouped
+                </button>
+              </div>
+              <div className="series-toggles">
+                <label className="series-toggle">
+                  <input
+                    type="checkbox"
+                    checked={visibleSeries.prs}
+                    onChange={(e) => setVisibleSeries(prev => ({ ...prev, prs: e.target.checked }))}
+                  />
+                  <span className="series-label" style={{ color: '#0969da' }}>PRs</span>
+                </label>
+                <label className="series-toggle">
+                  <input
+                    type="checkbox"
+                    checked={visibleSeries.commits}
+                    onChange={(e) => setVisibleSeries(prev => ({ ...prev, commits: e.target.checked }))}
+                  />
+                  <span className="series-label" style={{ color: '#2da44e' }}>Commits</span>
+                </label>
+                <label className="series-toggle">
+                  <input
+                    type="checkbox"
+                    checked={visibleSeries.reviews}
+                    onChange={(e) => setVisibleSeries(prev => ({ ...prev, reviews: e.target.checked }))}
+                  />
+                  <span className="series-label" style={{ color: '#bf3989' }}>Reviews</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={400}>
+            <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis
+                dataKey="name"
+                angle={-45}
+                textAnchor="end"
+                height={80}
+                interval={0}
+                style={{ fontSize: '0.75rem' }}
+              />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              {visibleSeries.prs && (
+                <Bar
+                  dataKey="PRs"
+                  fill="#0969da"
+                  stackId={isStacked ? 'stack' : undefined}
+                />
+              )}
+              {visibleSeries.commits && (
+                <Bar
+                  dataKey="Commits"
+                  fill="#2da44e"
+                  stackId={isStacked ? 'stack' : undefined}
+                />
+              )}
+              {visibleSeries.reviews && (
+                <Bar
+                  dataKey="Reviews"
+                  fill="#bf3989"
+                  stackId={isStacked ? 'stack' : undefined}
+                />
+              )}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       <div className="summary-cards">
         <div className="summary-card">
