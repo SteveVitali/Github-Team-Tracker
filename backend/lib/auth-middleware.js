@@ -5,11 +5,21 @@ import { decryptToken } from './encryption.js';
 /**
  * Require authentication for a route
  * Returns 401 if user is not authenticated
+ * Accepts both OAuth session and Bearer token (PAT) authentication
  */
 export function requireAuth(req, res, next) {
+  // Check for Bearer token in Authorization header (PAT auth)
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    // PAT authentication - considered authenticated
+    return next();
+  }
+
+  // Check OAuth session authentication
   if (req.isAuthenticated()) {
     return next();
   }
+
   res.status(401).json({
     error: 'Authentication required',
     message: 'Please log in to access this resource'
@@ -42,6 +52,17 @@ export function requireAdmin(req, res, next) {
  * Falls back to system token with warning if user token not found
  */
 export function attachUserToken(req, res, next) {
+  // First check for Authorization header with Bearer token (PAT auth)
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    req.userToken = token;
+    req.tokenSource = 'pat';
+    console.log('🔑 Using PAT from Authorization header');
+    return next();
+  }
+
+  // Otherwise proceed with OAuth session-based auth
   if (req.isAuthenticated()) {
     try {
       // Fetch and decrypt user's token
@@ -84,7 +105,11 @@ export function attachUserToken(req, res, next) {
  * Useful for endpoints that work better with auth but don't strictly require it
  */
 export function optionalAuth(req, res, next) {
-  if (req.isAuthenticated()) {
+  // Check for Bearer token in Authorization header
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    attachUserToken(req, res, next);
+  } else if (req.isAuthenticated()) {
     attachUserToken(req, res, next);
   } else {
     next();

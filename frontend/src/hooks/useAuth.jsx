@@ -14,8 +14,19 @@ export function AuthProvider({ children }) {
 
   const checkAuth = async () => {
     try {
-      const { user } = await api.getCurrentUser()
-      setUser(user)
+      // If PAT is present, consider user authenticated without checking backend
+      if (api.hasPAT()) {
+        // Use a generic user object for PAT auth
+        setUser({
+          username: 'PAT User',
+          name: 'Personal Access Token',
+          isPAT: true
+        })
+      } else {
+        // Otherwise check OAuth session
+        const { user } = await api.getCurrentUser()
+        setUser(user)
+      }
     } catch (error) {
       // Not authenticated
       setUser(null)
@@ -33,8 +44,13 @@ export function AuthProvider({ children }) {
     }
   }
 
+  const loginWithPAT = async (token) => {
+    api.loginWithPAT(token)
+    await checkAuth()
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, checkAuth, logout }}>
+    <AuthContext.Provider value={{ user, loading, checkAuth, logout, loginWithPAT }}>
       {children}
     </AuthContext.Provider>
   )

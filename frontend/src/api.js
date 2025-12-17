@@ -156,9 +156,14 @@ class ApiClient {
 
   async request(endpoint, options = {}) {
     const url = `${API_URL}${endpoint}`
+
+    // Check for PAT in localStorage
+    const pat = localStorage.getItem('github_pat')
+
     const config = {
       headers: {
         'Content-Type': 'application/json',
+        ...(pat ? { 'Authorization': `Bearer ${pat}` } : {}),
         ...options.headers,
       },
       credentials: 'include', // Include cookies for session management
@@ -247,6 +252,14 @@ class ApiClient {
   }
 
   async logout() {
+    // Clear PAT if using PAT auth
+    const hasPAT = localStorage.getItem('github_pat')
+    if (hasPAT) {
+      localStorage.removeItem('github_pat')
+      return { success: true }
+    }
+
+    // Otherwise use OAuth logout
     const backendUrl = this.getBackendBaseUrl()
     const response = await fetch(`${backendUrl}/auth/logout`, {
       method: 'POST',
@@ -259,6 +272,19 @@ class ApiClient {
   initiateLogin() {
     const backendUrl = this.getBackendBaseUrl()
     window.location.href = `${backendUrl}/auth/github`
+  }
+
+  // PAT authentication methods
+  loginWithPAT(token) {
+    localStorage.setItem('github_pat', token)
+  }
+
+  hasPAT() {
+    return !!localStorage.getItem('github_pat')
+  }
+
+  getPAT() {
+    return localStorage.getItem('github_pat')
   }
 }
 
