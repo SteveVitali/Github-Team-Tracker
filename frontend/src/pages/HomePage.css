@@ -7,6 +7,14 @@
   margin-bottom: 2rem;
 }
 
+.homepage-header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .homepage-header h2 {
   font-size: 2rem;
   color: #24292e;
@@ -16,4 +24,56 @@
 .homepage-header p {
   font-size: 1.125rem;
   color: #586069;
+}
+
+.homepage-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.refresh-button-homepage {
+  padding: 0.625rem 1.25rem;
+  background: #1a7f37;
+  border: 2px solid #1a7f37;
+  border-radius: 6px;
+  color: white;
+  font-weight: 500;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+  white-space: nowrap;
+  height: fit-content;
+}
+
+.refresh-button-homepage:hover:not(:disabled) {
+  background: #2da44e;
+  border-color: #2da44e;
+}
+
+.refresh-button-homepage:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.export-button-homepage {
+  padding: 0.625rem 1.25rem;
+  background: #0969da;
+  border: 2px solid #0969da;
+  border-radius: 6px;
+  color: white;
+  font-weight: 500;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+  white-space: nowrap;
+  height: fit-content;
+}
+
+.export-button-homepage:hover {
+  background: #0550ae;
+  border-color: #0550ae;
 }
