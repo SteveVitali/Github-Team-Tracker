@@ -1,6 +1,7 @@
 import { Octokit } from '@octokit/rest';
 import { config } from './config.js';
 import { trackApiCall } from './api-tracker.js';
+import { getConcurrencyState } from '../api/server.js';
 
 // Default Octokit instance with system token
 const defaultOctokit = new Octokit({
@@ -38,7 +39,8 @@ async function retryWithBackoff(fn, retries = config.MAX_RETRIES, backoff = conf
         ? parseInt(error.response.headers['retry-after']) * 1000
         : backoff;
 
-      console.log(`⏳ Rate limit hit, waiting ${Math.round(waitTime / 1000)}s before retry...`);
+      const state = getConcurrencyState();
+      console.log(`⏳ Rate limit hit, waiting ${Math.round(waitTime / 1000)}s before retry... [active: ${state.active}/${state.max}, queued: ${state.queued}]`);
       await sleep(waitTime);
       return retryWithBackoff(fn, retries - 1, backoff * 2);
     }
@@ -215,7 +217,8 @@ export async function getUserPullRequests(org, username, token = null) {
     return response.data.items;
   } catch (error) {
     if (error.status === 403 || error.status === 429) {
-      console.error(`⚠️  Rate limit exceeded for user ${username}, skipping...`);
+      const state = getConcurrencyState();
+      console.error(`⚠️  Rate limit exceeded for user ${username}, skipping... [active: ${state.active}/${state.max}, queued: ${state.queued}]`);
     } else {
       console.error(`Error fetching PRs for user ${username}:`, error.message);
     }

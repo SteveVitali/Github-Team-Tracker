@@ -60,6 +60,16 @@ let activeRequests = 0;
 let peakConcurrentRequests = 0;
 const requestQueue = [];
 
+// Export function to get current concurrency state (for logging from other modules)
+export function getConcurrencyState() {
+  return {
+    active: activeRequests,
+    queued: requestQueue.length,
+    max: config.MAX_CONCURRENT_REQUESTS,
+    peak: peakConcurrentRequests
+  };
+}
+
 // Process next request from queue
 function processQueue() {
   if (requestQueue.length > 0 && activeRequests < config.MAX_CONCURRENT_REQUESTS) {
