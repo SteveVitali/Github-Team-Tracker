@@ -32,7 +32,7 @@
   flex-wrap: wrap;
 }
 
-.refresh-button-homepage {
+.refresh-button {
   padding: 0.625rem 1.25rem;
   background: #1a7f37;
   border: 2px solid #1a7f37;
@@ -47,18 +47,18 @@
   height: fit-content;
 }
 
-.refresh-button-homepage:hover:not(:disabled) {
+.refresh-button:hover:not(:disabled) {
   background: #2da44e;
   border-color: #2da44e;
 }
 
-.refresh-button-homepage:disabled {
+.refresh-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
 }
 
-.export-button-homepage {
+.export-button {
   padding: 0.625rem 1.25rem;
   background: #0969da;
   border: 2px solid #0969da;
@@ -73,7 +73,7 @@
   height: fit-content;
 }
 
-.export-button-homepage:hover {
+.export-button:hover {
   background: #0550ae;
   border-color: #0550ae;
 }

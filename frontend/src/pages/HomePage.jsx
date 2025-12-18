@@ -77,7 +77,7 @@ export function HomePage() {
           <div className="homepage-buttons">
             <button
               onClick={handleRefresh}
-              className="refresh-button-homepage"
+              className="refresh-button"
               disabled={isRefreshing}
               title="Refresh teams and users list (bypasses cache)"
             >
@@ -85,7 +85,7 @@ export function HomePage() {
             </button>
             <button
               onClick={handleExportCache}
-              className="export-button-homepage"
+              className="export-button"
               title="Export all cached data as JSON file"
             >
               ⬇ Export Cache

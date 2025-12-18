@@ -407,7 +407,8 @@
   cursor: pointer;
   transition: all 0.2s;
   font-family: inherit;
-  margin-left: 0.5rem;
+  white-space: nowrap;
+  height: fit-content;
 }
 
 .refresh-button:hover:not(:disabled) {
@@ -419,6 +420,26 @@
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
+}
+
+.export-button {
+  padding: 0.625rem 1.25rem;
+  background: #0969da;
+  border: 2px solid #0969da;
+  border-radius: 6px;
+  color: white;
+  font-weight: 500;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+  white-space: nowrap;
+  height: fit-content;
+}
+
+.export-button:hover {
+  background: #0550ae;
+  border-color: #0550ae;
 }
 
 /* Summary cards */
