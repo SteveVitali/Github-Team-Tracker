@@ -6,6 +6,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner'
 import { useScrollRestoration } from '../hooks/useScrollRestoration'
 import { chunkDateRange, getDateRangeForPeriod, formatDateISO, getChunkStart, getChunkEnd } from '../utils/dateChunking'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { Tabs } from '../components/Tabs'
 import './TeamDetail.css'
 
 export function TeamDetail() {
@@ -23,6 +24,7 @@ export function TeamDetail() {
   const [isStacked, setIsStacked] = useState(true)
   const [visibleSeries, setVisibleSeries] = useState({ prs: true, commits: true, reviews: true })
   const [chunkStats, setChunkStats] = useState({}) // { 'YYYY-MM-DD': { prs: N, commits: N, reviews: N } }
+  const [activeTab, setActiveTab] = useState('contributions')
 
   // Restore scroll position when returning to this page
   useScrollRestoration(`team-detail-${teamSlug}`)
@@ -530,6 +532,12 @@ export function TeamDetail() {
     return option ? option.label : '30 Days'
   }
 
+  const tabs = [
+    { id: 'contributions', label: 'Contributions' },
+    { id: 'members', label: `Members (${team?.memberCount || 0})` },
+    { id: 'prs', label: `PRs (${teamPRs.length})` }
+  ]
+
   return (
     <div className="team-detail-container">
       <Link to="/" className="back-link">← Back to Teams</Link>
@@ -602,171 +610,180 @@ export function TeamDetail() {
           </div>
         </div>
 
-        {/* Time-Series Contributions Chart */}
-        {timeSeriesChartData.length > 0 && (
-          <div className="contributions-chart-section">
-            <div className="chart-header">
-              <h3>Team Contributions Over Time</h3>
-              <div className="chart-controls">
-                <div className="chart-view-toggle">
-                  <button
-                    onClick={() => setIsStacked(!isStacked)}
-                    className={`toggle-button ${!isStacked ? 'toggle-button-active' : ''}`}
-                  >
-                    Grouped
-                  </button>
+        {/* Tabs Navigation */}
+        <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+
+        {/* Contributions Tab */}
+        {activeTab === 'contributions' && (
+          <>
+            {/* Time-Series Contributions Chart */}
+            {timeSeriesChartData.length > 0 && (
+              <div className="contributions-chart-section">
+                <div className="chart-header">
+                  <h3>Team Contributions Over Time</h3>
+                  <div className="chart-controls">
+                    <div className="chart-view-toggle">
+                      <button
+                        onClick={() => setIsStacked(!isStacked)}
+                        className={`toggle-button ${!isStacked ? 'toggle-button-active' : ''}`}
+                      >
+                        Grouped
+                      </button>
+                    </div>
+                    <div className="series-toggles">
+                      <label className="series-toggle">
+                        <input
+                          type="checkbox"
+                          checked={visibleSeries.prs}
+                          onChange={(e) => setVisibleSeries(prev => ({ ...prev, prs: e.target.checked }))}
+                        />
+                        <span className="series-label" style={{ color: '#0969da' }}>PRs</span>
+                      </label>
+                      <label className="series-toggle">
+                        <input
+                          type="checkbox"
+                          checked={visibleSeries.commits}
+                          onChange={(e) => setVisibleSeries(prev => ({ ...prev, commits: e.target.checked }))}
+                        />
+                        <span className="series-label" style={{ color: '#2da44e' }}>Commits</span>
+                      </label>
+                      <label className="series-toggle">
+                        <input
+                          type="checkbox"
+                          checked={visibleSeries.reviews}
+                          onChange={(e) => setVisibleSeries(prev => ({ ...prev, reviews: e.target.checked }))}
+                        />
+                        <span className="series-label" style={{ color: '#bf3989' }}>Reviews</span>
+                      </label>
+                    </div>
+                  </div>
                 </div>
-                <div className="series-toggles">
-                  <label className="series-toggle">
-                    <input
-                      type="checkbox"
-                      checked={visibleSeries.prs}
-                      onChange={(e) => setVisibleSeries(prev => ({ ...prev, prs: e.target.checked }))}
+                <ResponsiveContainer width="100%" height={400}>
+                  <BarChart data={timeSeriesChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="name"
+                      angle={-45}
+                      textAnchor="end"
+                      height={80}
+                      interval={0}
+                      style={{ fontSize: '0.75rem' }}
                     />
-                    <span className="series-label" style={{ color: '#0969da' }}>PRs</span>
-                  </label>
-                  <label className="series-toggle">
-                    <input
-                      type="checkbox"
-                      checked={visibleSeries.commits}
-                      onChange={(e) => setVisibleSeries(prev => ({ ...prev, commits: e.target.checked }))}
-                    />
-                    <span className="series-label" style={{ color: '#2da44e' }}>Commits</span>
-                  </label>
-                  <label className="series-toggle">
-                    <input
-                      type="checkbox"
-                      checked={visibleSeries.reviews}
-                      onChange={(e) => setVisibleSeries(prev => ({ ...prev, reviews: e.target.checked }))}
-                    />
-                    <span className="series-label" style={{ color: '#bf3989' }}>Reviews</span>
-                  </label>
-                </div>
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    {visibleSeries.prs && (
+                      <Bar
+                        dataKey="PRs"
+                        fill="#0969da"
+                        stackId={isStacked ? 'stack' : undefined}
+                      />
+                    )}
+                    {visibleSeries.commits && (
+                      <Bar
+                        dataKey="Commits"
+                        fill="#2da44e"
+                        stackId={isStacked ? 'stack' : undefined}
+                      />
+                    )}
+                    {visibleSeries.reviews && (
+                      <Bar
+                        dataKey="Reviews"
+                        fill="#bf3989"
+                        stackId={isStacked ? 'stack' : undefined}
+                      />
+                    )}
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
-            </div>
-            <ResponsiveContainer width="100%" height={400}>
-              <BarChart data={timeSeriesChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="name"
-                  angle={-45}
-                  textAnchor="end"
-                  height={80}
-                  interval={0}
-                  style={{ fontSize: '0.75rem' }}
-                />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                {visibleSeries.prs && (
-                  <Bar
-                    dataKey="PRs"
-                    fill="#0969da"
-                    stackId={isStacked ? 'stack' : undefined}
-                  />
-                )}
-                {visibleSeries.commits && (
-                  <Bar
-                    dataKey="Commits"
-                    fill="#2da44e"
-                    stackId={isStacked ? 'stack' : undefined}
-                  />
-                )}
-                {visibleSeries.reviews && (
-                  <Bar
-                    dataKey="Reviews"
-                    fill="#bf3989"
-                    stackId={isStacked ? 'stack' : undefined}
-                  />
-                )}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+            )}
+
+            {/* Per-Member Contributions Chart */}
+            {chartData.length > 0 && (
+              <div className="contributions-chart-section">
+                <div className="chart-header">
+                  <h3>Contributions by Team Member</h3>
+                  <div className="chart-controls">
+                    <div className="chart-view-toggle">
+                      <button
+                        onClick={() => setIsStacked(!isStacked)}
+                        className={`toggle-button ${!isStacked ? 'toggle-button-active' : ''}`}
+                      >
+                        Grouped
+                      </button>
+                    </div>
+                    <div className="series-toggles">
+                      <label className="series-toggle">
+                        <input
+                          type="checkbox"
+                          checked={visibleSeries.prs}
+                          onChange={(e) => setVisibleSeries(prev => ({ ...prev, prs: e.target.checked }))}
+                        />
+                        <span className="series-label" style={{ color: '#0969da' }}>PRs</span>
+                      </label>
+                      <label className="series-toggle">
+                        <input
+                          type="checkbox"
+                          checked={visibleSeries.commits}
+                          onChange={(e) => setVisibleSeries(prev => ({ ...prev, commits: e.target.checked }))}
+                        />
+                        <span className="series-label" style={{ color: '#2da44e' }}>Commits</span>
+                      </label>
+                      <label className="series-toggle">
+                        <input
+                          type="checkbox"
+                          checked={visibleSeries.reviews}
+                          onChange={(e) => setVisibleSeries(prev => ({ ...prev, reviews: e.target.checked }))}
+                        />
+                        <span className="series-label" style={{ color: '#bf3989' }}>Reviews</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <ResponsiveContainer width="100%" height={400}>
+                  <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="name"
+                      angle={-45}
+                      textAnchor="end"
+                      height={100}
+                      interval={0}
+                      style={{ fontSize: '0.75rem' }}
+                    />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    {visibleSeries.prs && (
+                      <Bar
+                        dataKey="PRs"
+                        fill="#0969da"
+                        stackId={isStacked ? 'stack' : undefined}
+                      />
+                    )}
+                    {visibleSeries.commits && (
+                      <Bar
+                        dataKey="Commits"
+                        fill="#2da44e"
+                        stackId={isStacked ? 'stack' : undefined}
+                      />
+                    )}
+                    {visibleSeries.reviews && (
+                      <Bar
+                        dataKey="Reviews"
+                        fill="#bf3989"
+                        stackId={isStacked ? 'stack' : undefined}
+                      />
+                    )}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </>
         )}
 
-        {/* Per-Member Contributions Chart */}
-        {chartData.length > 0 && (
-          <div className="contributions-chart-section">
-            <div className="chart-header">
-              <h3>Contributions by Team Member</h3>
-              <div className="chart-controls">
-                <div className="chart-view-toggle">
-                  <button
-                    onClick={() => setIsStacked(!isStacked)}
-                    className={`toggle-button ${!isStacked ? 'toggle-button-active' : ''}`}
-                  >
-                    Grouped
-                  </button>
-                </div>
-                <div className="series-toggles">
-                  <label className="series-toggle">
-                    <input
-                      type="checkbox"
-                      checked={visibleSeries.prs}
-                      onChange={(e) => setVisibleSeries(prev => ({ ...prev, prs: e.target.checked }))}
-                    />
-                    <span className="series-label" style={{ color: '#0969da' }}>PRs</span>
-                  </label>
-                  <label className="series-toggle">
-                    <input
-                      type="checkbox"
-                      checked={visibleSeries.commits}
-                      onChange={(e) => setVisibleSeries(prev => ({ ...prev, commits: e.target.checked }))}
-                    />
-                    <span className="series-label" style={{ color: '#2da44e' }}>Commits</span>
-                  </label>
-                  <label className="series-toggle">
-                    <input
-                      type="checkbox"
-                      checked={visibleSeries.reviews}
-                      onChange={(e) => setVisibleSeries(prev => ({ ...prev, reviews: e.target.checked }))}
-                    />
-                    <span className="series-label" style={{ color: '#bf3989' }}>Reviews</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-            <ResponsiveContainer width="100%" height={400}>
-              <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="name"
-                  angle={-45}
-                  textAnchor="end"
-                  height={100}
-                  interval={0}
-                  style={{ fontSize: '0.75rem' }}
-                />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                {visibleSeries.prs && (
-                  <Bar
-                    dataKey="PRs"
-                    fill="#0969da"
-                    stackId={isStacked ? 'stack' : undefined}
-                  />
-                )}
-                {visibleSeries.commits && (
-                  <Bar
-                    dataKey="Commits"
-                    fill="#2da44e"
-                    stackId={isStacked ? 'stack' : undefined}
-                  />
-                )}
-                {visibleSeries.reviews && (
-                  <Bar
-                    dataKey="Reviews"
-                    fill="#bf3989"
-                    stackId={isStacked ? 'stack' : undefined}
-                  />
-                )}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {sortedMembers.length > 0 && (
+        {/* Members Tab */}
+        {activeTab === 'members' && sortedMembers.length > 0 && (
           <div className="team-members-section">
             <h3>Team Members ({sortedMembers.length})</h3>
             <div className="members-grid">
@@ -836,8 +853,8 @@ export function TeamDetail() {
           </div>
         )}
 
-        {/* Team Pull Requests */}
-        {teamPRs.length > 0 && (
+        {/* PRs Tab */}
+        {activeTab === 'prs' && teamPRs.length > 0 && (
           <div className="team-prs-section">
             <h3>Team Pull Requests ({teamPRs.length})</h3>
 
