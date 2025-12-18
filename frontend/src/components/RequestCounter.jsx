@@ -15,18 +15,18 @@ export function RequestCounter() {
     return unsubscribe
   }, [])
 
-  // Don't show counter if no requests
-  if (stats.total === 0) {
-    return null
-  }
-
+  // Always show the counter with queued count
   return (
     <div className="request-counter">
       <span className="counter-icon">🔄</span>
       <span className="counter-stats">
-        {stats.active > 0 && <span className="counter-active">{stats.active} active</span>}
-        {stats.active > 0 && stats.queued > 0 && <span className="counter-separator">, </span>}
-        {stats.queued > 0 && <span className="counter-queued">{stats.queued} queued</span>}
+        <span className="counter-queued">{stats.queued} queued</span>
+        {stats.active > 0 && (
+          <>
+            <span className="counter-separator">, </span>
+            <span className="counter-active">{stats.active} active</span>
+          </>
+        )}
       </span>
     </div>
   )
