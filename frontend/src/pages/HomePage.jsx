@@ -3,6 +3,7 @@ import { Tabs } from '../components/Tabs'
 import { TeamsList } from './TeamsList'
 import { UsersList } from './UsersList'
 import { useScrollRestoration } from '../hooks/useScrollRestoration'
+import { indexedDBCache } from '../indexeddb-cache'
 import './HomePage.css'
 
 export function HomePage() {
@@ -27,26 +28,23 @@ export function HomePage() {
     setTimeout(() => setIsRefreshing(false), 500)
   }
 
-  const handleExportCache = () => {
+  const handleExportCache = async () => {
     try {
-      // Get all localStorage items that are API cache entries
-      const cacheEntries = {}
-      const keys = Object.keys(localStorage)
+      // Get all IndexedDB cache entries
+      const cacheEntries = await indexedDBCache.getAll()
 
-      keys.forEach(key => {
-        if (key.startsWith('api_cache_')) {
-          try {
-            const value = localStorage.getItem(key)
-            cacheEntries[key] = JSON.parse(value)
-          } catch (e) {
-            // If parsing fails, store raw value
-            cacheEntries[key] = localStorage.getItem(key)
-          }
+      // Convert to object format for export
+      const exportData = {}
+      cacheEntries.forEach(entry => {
+        exportData[entry.key] = {
+          data: entry.data,
+          timestamp: entry.timestamp,
+          ttl: entry.ttl
         }
       })
 
       // Create JSON file
-      const jsonString = JSON.stringify(cacheEntries, null, 2)
+      const jsonString = JSON.stringify(exportData, null, 2)
       const blob = new Blob([jsonString], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
 
@@ -61,7 +59,7 @@ export function HomePage() {
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
 
-      console.log(`✅ Exported ${Object.keys(cacheEntries).length} cache entries`)
+      console.log(`✅ Exported ${cacheEntries.length} cache entries from IndexedDB`)
     } catch (error) {
       console.error('Failed to export cache:', error)
       alert('Failed to export cache. Check console for details.')

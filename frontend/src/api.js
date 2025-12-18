@@ -1,3 +1,5 @@
+import { indexedDBCache } from './indexeddb-cache.js'
+
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 // Cache configuration
@@ -12,7 +14,7 @@ class ApiClient {
     // Auto-clear cache if DEFAULT_CACHE_TTL is 0 (development mode)
     if (DEFAULT_CACHE_TTL === 0) {
       console.log('🗑️  Cache TTL is 0, clearing all cache on startup')
-      this.clearCache()
+      this.clearCache() // async but fire-and-forget is fine for startup
     }
   }
 
@@ -39,36 +41,19 @@ class ApiClient {
   /**
    * Get cached data if available and not expired
    */
-  getFromCache(endpoint) {
+  async getFromCache(endpoint) {
     if (!this.cacheEnabled) return null
 
     try {
       const cacheKey = this.getCacheKey(endpoint)
-      const cached = localStorage.getItem(cacheKey)
+      const data = await indexedDBCache.get(cacheKey)
 
-      if (!cached) {
-        console.log(`❌ Cache MISS for ${endpoint} (not found)`)
+      if (data === null) {
+        console.log(`❌ Cache MISS for ${endpoint} (not found or expired)`)
         return null
       }
 
-      const { data, timestamp, ttl } = JSON.parse(cached)
-      const age = Date.now() - timestamp
-
-      // Check if cache is expired (ttl of 0 means always expired)
-      if (ttl !== undefined && ttl !== null && age > ttl) {
-        console.log(`❌ Cache MISS for ${endpoint} (expired: ${Math.round(age / 1000)}s old, TTL: ${Math.round(ttl / 1000)}s)`)
-        localStorage.removeItem(cacheKey)
-        return null
-      }
-
-      // Special case: if TTL is 0, cache should always be considered expired
-      if (ttl === 0) {
-        console.log(`❌ Cache MISS for ${endpoint} (TTL is 0)`)
-        localStorage.removeItem(cacheKey)
-        return null
-      }
-
-      console.log(`✅ Cache HIT for ${endpoint} (age: ${Math.round(age / 1000)}s)`)
+      console.log(`✅ Cache HIT for ${endpoint}`)
       return data
     } catch (error) {
       console.warn(`❌ Cache MISS for ${endpoint} (error: ${error.message})`)
@@ -79,47 +64,29 @@ class ApiClient {
   /**
    * Store data in cache
    */
-  setCache(endpoint, data, ttl = DEFAULT_CACHE_TTL) {
+  async setCache(endpoint, data, ttl = DEFAULT_CACHE_TTL) {
     if (!this.cacheEnabled) return
 
-    const cacheKey = this.getCacheKey(endpoint)
-    const cacheData = {
-      data,
-      timestamp: Date.now(),
-      ttl,
-    }
-
     try {
-      localStorage.setItem(cacheKey, JSON.stringify(cacheData))
-      console.log(`💾 Cached ${endpoint} (TTL: ${ttl / 1000}s)`)
-    } catch (error) {
-      // If localStorage is full, clear old cache entries and retry once
-      if (error.name === 'QuotaExceededError') {
-        console.warn(`⚠️  localStorage quota exceeded, clearing old cache entries...`)
-        this.clearOldCache()
+      const cacheKey = this.getCacheKey(endpoint)
+      const success = await indexedDBCache.set(cacheKey, data, ttl)
 
-        // Retry the write after clearing
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify(cacheData))
-          console.log(`💾 Cached ${endpoint} after clearing old entries (TTL: ${ttl / 1000}s)`)
-        } catch (retryError) {
-          console.warn(`❌ Cache write failed even after clearing old entries:`, retryError)
-        }
+      if (success) {
+        console.log(`💾 Cached ${endpoint} (TTL: ${Math.round(ttl / 1000)}s)`)
       } else {
-        console.warn('Cache write error:', error)
+        console.warn(`❌ Failed to cache ${endpoint}`)
       }
+    } catch (error) {
+      console.warn('Cache write error:', error)
     }
   }
 
   /**
    * Clear all cached API responses
    */
-  clearCache() {
+  async clearCache() {
     try {
-      const keys = Object.keys(localStorage)
-      const cacheKeys = keys.filter(key => key.startsWith(CACHE_PREFIX))
-      cacheKeys.forEach(key => localStorage.removeItem(key))
-      console.log(`🗑️  Cleared ${cacheKeys.length} cache entries`)
+      await indexedDBCache.clear()
     } catch (error) {
       console.warn('Cache clear error:', error)
     }
@@ -128,28 +95,9 @@ class ApiClient {
   /**
    * Clear old cache entries (oldest first) to free up space
    */
-  clearOldCache() {
+  async clearOldCache() {
     try {
-      const keys = Object.keys(localStorage)
-      const cacheKeys = keys.filter(key => key.startsWith(CACHE_PREFIX))
-
-      // Parse and sort by timestamp
-      const entries = cacheKeys.map(key => {
-        try {
-          const { timestamp } = JSON.parse(localStorage.getItem(key))
-          return { key, timestamp }
-        } catch {
-          return { key, timestamp: 0 }
-        }
-      }).sort((a, b) => a.timestamp - b.timestamp)
-
-      // Remove oldest 25%
-      const toRemove = Math.ceil(entries.length * 0.25)
-      entries.slice(0, toRemove).forEach(({ key }) => {
-        localStorage.removeItem(key)
-      })
-
-      console.log(`🗑️  Cleared ${toRemove} old cache entries`)
+      await indexedDBCache.clearOld()
     } catch (error) {
       console.warn('Old cache clear error:', error)
     }
@@ -202,14 +150,14 @@ class ApiClient {
     }
   }
 
-  get(endpoint, options = {}) {
+  async get(endpoint, options = {}) {
     const { bypassCache = false, cacheTTL = DEFAULT_CACHE_TTL } = options
 
     // Check cache first (unless bypassed)
     if (!bypassCache) {
-      const cached = this.getFromCache(endpoint)
+      const cached = await this.getFromCache(endpoint)
       if (cached !== null) {
-        return Promise.resolve(cached)
+        return cached
       }
     } else {
       console.log(`⚠️  Cache BYPASSED for ${endpoint}`)
@@ -224,8 +172,8 @@ class ApiClient {
 
     // Make the request and cache the result
     const requestPromise = this.request(endpoint, { ...options, method: 'GET' })
-      .then(data => {
-        this.setCache(endpoint, data, cacheTTL)
+      .then(async data => {
+        await this.setCache(endpoint, data, cacheTTL)
         return data
       })
       .finally(() => {
