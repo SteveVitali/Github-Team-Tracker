@@ -459,6 +459,20 @@ export function TeamDetail() {
     }
   }
 
+  // Filter PRs based on period (client-side filtering for 7 days)
+  const filteredTeamPRs = useMemo(() => {
+    if (period !== '7days') return teamPRs
+
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+    sevenDaysAgo.setHours(0, 0, 0, 0)
+
+    return teamPRs.filter(pr => {
+      const prDate = new Date(pr.createdAt)
+      return prDate >= sevenDaysAgo
+    })
+  }, [teamPRs, period])
+
   // Group and sort team PRs by status, then by user (must be before early returns)
   const groupedTeamPRs = useMemo(() => {
     const groups = {
@@ -662,21 +676,6 @@ export function TeamDetail() {
     const option = periodOptions.find(opt => opt.value === period)
     return option ? option.label : '30 Days'
   }
-
-
-  // Filter PRs based on period (client-side filtering for 7 days)
-  const filteredTeamPRs = useMemo(() => {
-    if (period !== '7days') return teamPRs
-
-    const sevenDaysAgo = new Date()
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-    sevenDaysAgo.setHours(0, 0, 0, 0)
-
-    return teamPRs.filter(pr => {
-      const prDate = new Date(pr.createdAt)
-      return prDate >= sevenDaysAgo
-    })
-  }, [teamPRs, period])
 
   // Calculate member count from team data
   const memberCount = team?.memberCount ?? team?.members?.length ?? 0
