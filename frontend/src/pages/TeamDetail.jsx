@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { api } from '../api'
+import { indexedDBCache } from '../indexeddb-cache'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { useScrollRestoration } from '../hooks/useScrollRestoration'
 import { chunkDateRange, getDateRangeForPeriod, formatDateISO, getChunkStart, getChunkEnd } from '../utils/dateChunking'
@@ -433,6 +434,50 @@ export function TeamDetail() {
     }))
   }
 
+  const handleExportTeamCache = async () => {
+    try {
+      // Get all IndexedDB cache entries
+      const allEntries = await indexedDBCache.getAll()
+
+      // Filter entries related to this team
+      const teamEntries = allEntries.filter(entry => {
+        // Include entries that contain the team slug in the key
+        return entry.key.includes(`/teams/${teamSlug}`)
+      })
+
+      // Convert to object format for export
+      const exportData = {}
+      teamEntries.forEach(entry => {
+        exportData[entry.key] = {
+          data: entry.data,
+          timestamp: entry.timestamp,
+          ttl: entry.ttl
+        }
+      })
+
+      // Create JSON file
+      const jsonString = JSON.stringify(exportData, null, 2)
+      const blob = new Blob([jsonString], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+
+      // Create download link and trigger download
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `team-${teamSlug}-cache-${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(link)
+      link.click()
+
+      // Cleanup
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      console.log(`✅ Exported ${teamEntries.length} cache entries for team ${teamSlug}`)
+    } catch (error) {
+      console.error('Failed to export team cache:', error)
+      alert('Failed to export cache. Check console for details.')
+    }
+  }
+
   const periodOptions = [
     { value: '30days', label: '30 Days' },
     { value: '90days', label: '90 Days' },
@@ -505,6 +550,13 @@ export function TeamDetail() {
               title="Refresh latest data for all members (bypasses cache)"
             >
               {refreshingLatest ? '↻ Refreshing...' : '↻ Refresh Latest'}
+            </button>
+            <button
+              onClick={handleExportTeamCache}
+              className="export-button"
+              title="Export cached data for this team"
+            >
+              ⬇ Export Team Cache
             </button>
           </div>
         </div>

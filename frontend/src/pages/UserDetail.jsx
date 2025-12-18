@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
+import { indexedDBCache } from '../indexeddb-cache'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { chunkDateRange, getDateRangeForPeriod, formatDateISO, getChunkStart, getChunkEnd } from '../utils/dateChunking'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
@@ -409,6 +410,50 @@ export function UserDetail() {
     }
   }
 
+  const handleExportUserCache = async () => {
+    try {
+      // Get all IndexedDB cache entries
+      const allEntries = await indexedDBCache.getAll()
+
+      // Filter entries related to this user
+      const userEntries = allEntries.filter(entry => {
+        // Include entries that contain the username in the key
+        return entry.key.includes(`/user/${username}`) || entry.key.includes(`/${username}/`)
+      })
+
+      // Convert to object format for export
+      const exportData = {}
+      userEntries.forEach(entry => {
+        exportData[entry.key] = {
+          data: entry.data,
+          timestamp: entry.timestamp,
+          ttl: entry.ttl
+        }
+      })
+
+      // Create JSON file
+      const jsonString = JSON.stringify(exportData, null, 2)
+      const blob = new Blob([jsonString], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+
+      // Create download link and trigger download
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `user-${username}-cache-${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(link)
+      link.click()
+
+      // Cleanup
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      console.log(`✅ Exported ${userEntries.length} cache entries for user ${username}`)
+    } catch (error) {
+      console.error('Failed to export user cache:', error)
+      alert('Failed to export cache. Check console for details.')
+    }
+  }
+
   // Transform chunk stats into time-series chart data
   const chartData = useMemo(() => {
     return Object.entries(chunkStats)
@@ -626,6 +671,13 @@ export function UserDetail() {
             title="Refresh latest data (bypasses cache)"
           >
             {refreshingLatest ? '↻ Refreshing...' : '↻ Refresh Latest'}
+          </button>
+          <button
+            onClick={handleExportUserCache}
+            className="export-button"
+            title="Export cached data for this user"
+          >
+            ⬇ Export User Cache
           </button>
         </div>
       </div>
