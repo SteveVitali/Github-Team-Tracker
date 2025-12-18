@@ -55,40 +55,56 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Concurrent request tracking
-let concurrentRequests = 0;
+// Concurrent request tracking and queueing
+let activeRequests = 0;
 let peakConcurrentRequests = 0;
+const requestQueue = [];
 
-// Request logging middleware with concurrency tracking
-app.use((req, res, next) => {
-  concurrentRequests++;
-  if (concurrentRequests > peakConcurrentRequests) {
-    peakConcurrentRequests = concurrentRequests;
+// Process next request from queue
+function processQueue() {
+  if (requestQueue.length > 0 && activeRequests < config.MAX_CONCURRENT_REQUESTS) {
+    const next = requestQueue.shift();
+    next();
   }
+}
 
+// Request queueing middleware with concurrency control
+app.use((req, res, next) => {
   const start = Date.now();
   const requestId = Math.random().toString(36).substring(7);
 
-  res.on('finish', () => {
-    concurrentRequests--;
-    const duration = Date.now() - start;
-    console.log(`[${requestId}] ${req.method} ${req.path} ${res.statusCode} - ${duration}ms [concurrent: ${concurrentRequests + 1}→${concurrentRequests}, peak: ${peakConcurrentRequests}]`);
-  });
+  // Function to continue processing this request
+  const continueRequest = () => {
+    activeRequests++;
+    if (activeRequests > peakConcurrentRequests) {
+      peakConcurrentRequests = activeRequests;
+    }
 
-  next();
-});
+    const queueTime = Date.now() - start;
+    if (queueTime > 0) {
+      console.log(`[${requestId}] ${req.method} ${req.path} - queued for ${queueTime}ms [active: ${activeRequests}/${config.MAX_CONCURRENT_REQUESTS}, queued: ${requestQueue.length}]`);
+    }
 
-// Concurrency limiting middleware
-app.use((req, res, next) => {
-  if (concurrentRequests > config.MAX_CONCURRENT_REQUESTS) {
-    res.status(503).json({
-      error: 'Service temporarily unavailable',
-      message: `Server is at maximum capacity (${config.MAX_CONCURRENT_REQUESTS} concurrent requests). Please try again shortly.`,
-      retryAfter: 1
+    res.on('finish', () => {
+      activeRequests--;
+      const duration = Date.now() - start;
+      console.log(`[${requestId}] ${req.method} ${req.path} ${res.statusCode} - ${duration}ms [active: ${activeRequests + 1}→${activeRequests}, peak: ${peakConcurrentRequests}]`);
+
+      // Process next queued request
+      processQueue();
     });
-    return;
+
+    next();
+  };
+
+  // If we have capacity, process immediately
+  if (activeRequests < config.MAX_CONCURRENT_REQUESTS) {
+    continueRequest();
+  } else {
+    // Otherwise, queue the request
+    console.log(`[${requestId}] ${req.method} ${req.path} - queuing request [active: ${activeRequests}/${config.MAX_CONCURRENT_REQUESTS}, queued: ${requestQueue.length}]`);
+    requestQueue.push(continueRequest);
   }
-  next();
 });
 
 // Initialize API call tracking for each request
