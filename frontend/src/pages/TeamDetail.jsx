@@ -16,7 +16,13 @@ export function TeamDetail() {
   const [error, setError] = useState(null)
   const [memberStats, setMemberStats] = useState({}) // { username: { prs: N, commits: N, reviews: N, total: N, loading: bool } }
   const [fetchProgress, setFetchProgress] = useState({ loaded: 0, total: 0, errors: 0 })
-  const [period, setPeriod] = useState('30days')
+
+  // Initialize period from localStorage for this specific team
+  const [period, setPeriod] = useState(() => {
+    const stored = localStorage.getItem(`team-period-${teamSlug}`)
+    return stored || '30days'
+  })
+
   const [refreshingLatest, setRefreshingLatest] = useState(false)
   const [teamPRs, setTeamPRs] = useState([]) // All PRs from all team members
   const [collapsedSections, setCollapsedSections] = useState({ closed: true, merged: true, open: false })
@@ -24,10 +30,25 @@ export function TeamDetail() {
   const [isStacked, setIsStacked] = useState(true)
   const [visibleSeries, setVisibleSeries] = useState({ prs: true, commits: true, reviews: true })
   const [chunkStats, setChunkStats] = useState({}) // { 'YYYY-MM-DD': { prs: N, commits: N, reviews: N } }
-  const [activeTab, setActiveTab] = useState('contributions')
+
+  // Initialize activeTab from localStorage for this specific team
+  const [activeTab, setActiveTab] = useState(() => {
+    const stored = localStorage.getItem(`team-tab-${teamSlug}`)
+    return stored || 'contributions'
+  })
 
   // Restore scroll position when returning to this page
   useScrollRestoration(`team-detail-${teamSlug}`)
+
+  // Save period to localStorage whenever it changes for this team
+  useEffect(() => {
+    localStorage.setItem(`team-period-${teamSlug}`, period)
+  }, [teamSlug, period])
+
+  // Save activeTab to localStorage whenever it changes for this team
+  useEffect(() => {
+    localStorage.setItem(`team-tab-${teamSlug}`, activeTab)
+  }, [teamSlug, activeTab])
 
   useEffect(() => {
     const fetchTeam = async () => {
@@ -82,11 +103,22 @@ export function TeamDetail() {
   // Separate effect to fetch member contributions when team or period changes
   useEffect(() => {
     const members = team?.members || []
-    if (members.length > 0) {
-      fetchMemberContributions(members)
+    if (members.length === 0) return
+
+    // Create AbortController for this fetch cycle
+    const abortController = new AbortController()
+    let isCancelled = false
+
+    fetchMemberContributions(members, abortController)
+
+    // Cleanup function to abort ongoing requests when period changes
+    return () => {
+      console.log('[TeamDetail] Aborting previous fetch cycle')
+      isCancelled = true
+      abortController.abort()
     }
 
-    async function fetchMemberContributions(members) {
+    async function fetchMemberContributions(members, abortController) {
       // Reset member stats and team PRs before fetching new period
       setMemberStats({})
       setTeamPRs([])
@@ -138,7 +170,11 @@ export function TeamDetail() {
 
               // Fetch PRs
               try {
-                const prsData = await api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`)
+                const prsData = await api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+
+                // Check if request was cancelled
+                if (isCancelled) return
+
                 const prsCount = prsData.prs?.length || 0
                 userPrsCount += prsCount
 
@@ -172,24 +208,37 @@ export function TeamDetail() {
                 setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
 
                 // Update stats progressively
-                setMemberStats(prev => ({
-                  ...prev,
-                  [username]: {
-                    ...prev[username],
-                    prs: userPrsCount,
-                    total: userPrsCount + (prev[username]?.commits || 0) + (prev[username]?.reviews || 0)
-                  }
-                }))
+                if (!isCancelled) {
+                  setMemberStats(prev => ({
+                    ...prev,
+                    [username]: {
+                      ...prev[username],
+                      prs: userPrsCount,
+                      total: userPrsCount + (prev[username]?.commits || 0) + (prev[username]?.reviews || 0)
+                    }
+                  }))
+                }
               } catch (err) {
+                // Handle abort gracefully
+                if (err.name === 'AbortError') {
+                  console.log(`[TeamDetail] PR request aborted for ${username}`)
+                  return
+                }
                 console.error(`Error fetching PRs for ${username}:`, err)
                 counter.value++
                 counter.errors++
-                setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
+                if (!isCancelled) {
+                  setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
+                }
               }
 
               // Fetch commits
               try {
-                const commitsData = await api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`)
+                const commitsData = await api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+
+                // Check if request was cancelled
+                if (isCancelled) return
+
                 const commitsCount = commitsData.commits?.length || 0
                 userCommitsCount += commitsCount
 
@@ -209,24 +258,37 @@ export function TeamDetail() {
                 setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
 
                 // Update stats progressively
-                setMemberStats(prev => ({
-                  ...prev,
-                  [username]: {
-                    ...prev[username],
-                    commits: userCommitsCount,
-                    total: (prev[username]?.prs || 0) + userCommitsCount + (prev[username]?.reviews || 0)
-                  }
-                }))
+                if (!isCancelled) {
+                  setMemberStats(prev => ({
+                    ...prev,
+                    [username]: {
+                      ...prev[username],
+                      commits: userCommitsCount,
+                      total: (prev[username]?.prs || 0) + userCommitsCount + (prev[username]?.reviews || 0)
+                    }
+                  }))
+                }
               } catch (err) {
+                // Handle abort gracefully
+                if (err.name === 'AbortError') {
+                  console.log(`[TeamDetail] Commits request aborted for ${username}`)
+                  return
+                }
                 console.error(`Error fetching commits for ${username}:`, err)
                 counter.value++
                 counter.errors++
-                setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
+                if (!isCancelled) {
+                  setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
+                }
               }
 
               // Fetch reviews
               try {
-                const reviewsData = await api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`)
+                const reviewsData = await api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+
+                // Check if request was cancelled
+                if (isCancelled) return
+
                 const reviewsCount = reviewsData.reviews?.length || 0
                 userReviewsCount += reviewsCount
 
@@ -249,41 +311,52 @@ export function TeamDetail() {
                 userLoadedChunks++
 
                 // Update stats progressively
-                setMemberStats(prev => ({
-                  ...prev,
-                  [username]: {
-                    ...prev[username],
-                    reviews: userReviewsCount,
-                    total: (prev[username]?.prs || 0) + (prev[username]?.commits || 0) + userReviewsCount,
-                    loadedChunks: userLoadedChunks
-                  }
-                }))
+                if (!isCancelled) {
+                  setMemberStats(prev => ({
+                    ...prev,
+                    [username]: {
+                      ...prev[username],
+                      reviews: userReviewsCount,
+                      total: (prev[username]?.prs || 0) + (prev[username]?.commits || 0) + userReviewsCount,
+                      loadedChunks: userLoadedChunks
+                    }
+                  }))
+                }
               } catch (err) {
+                // Handle abort gracefully
+                if (err.name === 'AbortError') {
+                  console.log(`[TeamDetail] Reviews request aborted for ${username}`)
+                  return
+                }
                 console.error(`Error fetching reviews for ${username}:`, err)
                 counter.value++
                 counter.errors++
-                setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
-                // Still increment local chunk counter on error (chunk is done, even if it failed)
-                userLoadedChunks++
-                setMemberStats(prev => ({
-                  ...prev,
-                  [username]: {
-                    ...prev[username],
-                    loadedChunks: userLoadedChunks
-                  }
-                }))
+                if (!isCancelled) {
+                  setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
+                  // Still increment local chunk counter on error (chunk is done, even if it failed)
+                  userLoadedChunks++
+                  setMemberStats(prev => ({
+                    ...prev,
+                    [username]: {
+                      ...prev[username],
+                      loadedChunks: userLoadedChunks
+                    }
+                  }))
+                }
               }
             })
           )
 
           // Mark this member as loaded
-          setMemberStats(prev => ({
-            ...prev,
-            [username]: {
-              ...prev[username],
-              loading: false
-            }
-          }))
+          if (!isCancelled) {
+            setMemberStats(prev => ({
+              ...prev,
+              [username]: {
+                ...prev[username],
+                loading: false
+              }
+            }))
+          }
         })
       )
     }
@@ -564,6 +637,28 @@ export function TeamDetail() {
     return option ? option.label : '30 Days'
   }
 
+  // Helper function to determine if a period option should be disabled during loading
+  const isPeriodDisabled = (optionValue) => {
+    if (fetchProgress.total === 0 || fetchProgress.loaded >= fetchProgress.total) {
+      return false // Not loading, enable all
+    }
+
+    // Map period values to their relative sizes
+    const periodSizes = {
+      '30days': 1,
+      '90days': 2,
+      '365days': 3,
+      'all-time': 4
+    }
+
+    const currentSize = periodSizes[period] || 0
+    const optionSize = periodSizes[optionValue] || 0
+
+    // Disable if option is smaller than or equal to current period
+    // (prevents wasteful API calls and disables current button during load)
+    return optionSize <= currentSize
+  }
+
   // Calculate member count from team data
   const memberCount = team?.memberCount ?? team?.members?.length ?? 0
 
@@ -622,7 +717,7 @@ export function TeamDetail() {
                 key={option.value}
                 onClick={() => setPeriod(option.value)}
                 className={`day-button ${period === option.value ? 'day-button-active' : ''}`}
-                disabled={fetchProgress.total > 0 && fetchProgress.loaded < fetchProgress.total}
+                disabled={isPeriodDisabled(option.value)}
               >
                 {option.label}
               </button>

@@ -16,15 +16,40 @@ export function UserDetail() {
   const [reviews, setReviews] = useState({ reviews: [], count: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [activeTab, setActiveTab] = useState('prs')
-  const [period, setPeriod] = useState('30days')
+
+  // Initialize activeTab from localStorage for this specific user
+  const [activeTab, setActiveTab] = useState(() => {
+    const stored = localStorage.getItem(`user-tab-${username}`)
+    return stored || 'prs'
+  })
+
+  // Initialize period from localStorage for this specific user
+  const [period, setPeriod] = useState(() => {
+    const stored = localStorage.getItem(`user-period-${username}`)
+    return stored || '30days'
+  })
+
   const [fetchProgress, setFetchProgress] = useState({ loaded: 0, total: 0, errors: 0 })
   const [refreshingLatest, setRefreshingLatest] = useState(false)
   const [chunkStats, setChunkStats] = useState({}) // { 'YYYY-MM-DD': { prs: N, commits: N, reviews: N } }
   const [isStacked, setIsStacked] = useState(true)
   const [visibleSeries, setVisibleSeries] = useState({ prs: true, commits: true, reviews: true })
 
+  // Save period to localStorage whenever it changes for this user
   useEffect(() => {
+    localStorage.setItem(`user-period-${username}`, period)
+  }, [username, period])
+
+  // Save activeTab to localStorage whenever it changes for this user
+  useEffect(() => {
+    localStorage.setItem(`user-tab-${username}`, activeTab)
+  }, [username, activeTab])
+
+  useEffect(() => {
+    // Create AbortController for this fetch cycle
+    const abortController = new AbortController()
+    let isCancelled = false
+
     const fetchUserData = async () => {
       console.log('[UserDetail] Starting fetchUserData for', username, 'period:', period)
       setLoading(true)
@@ -79,99 +104,141 @@ export function UserDetail() {
             let chunkReviewsCount = 0
 
             try {
-              const prsData = await api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`)
+              const prsData = await api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+
+              // Check if request was cancelled
+              if (isCancelled) break
+
               if (prsData.prs && prsData.prs.length === 100) {
                 console.error(`🚨 PAGINATION LIMIT HIT! PR endpoint returned exactly 100 items for ${username} (${fromStr} to ${toStr}). Chunk size may be too large!`)
               }
               chunkPrsCount = (prsData.prs || []).length
-              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+              if (!isCancelled) {
+                setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+              }
 
               const chunkKey = fromStr
-              setChunkStats(prev => ({
-                ...prev,
-                [chunkKey]: {
-                  ...prev[chunkKey],
-                  prs: chunkPrsCount,
-                  from: chunk.from,
-                  to: chunk.to
-                }
-              }))
+              if (!isCancelled) {
+                setChunkStats(prev => ({
+                  ...prev,
+                  [chunkKey]: {
+                    ...prev[chunkKey],
+                    prs: chunkPrsCount,
+                    from: chunk.from,
+                    to: chunk.to
+                  }
+                }))
 
-              setPrs(prev => {
-                const existingIds = new Set(prev.prs.map(pr => pr.id))
-                const newPrs = (prsData.prs || []).filter(pr => !existingIds.has(pr.id))
-                return {
-                  prs: [...prev.prs, ...newPrs],
-                  count: prev.prs.length + newPrs.length
-                }
-              })
+                setPrs(prev => {
+                  const existingIds = new Set(prev.prs.map(pr => pr.id))
+                  const newPrs = (prsData.prs || []).filter(pr => !existingIds.has(pr.id))
+                  return {
+                    prs: [...prev.prs, ...newPrs],
+                    count: prev.prs.length + newPrs.length
+                  }
+                })
+              }
             } catch (err) {
+              if (err.name === 'AbortError') {
+                console.log('[UserDetail] Request aborted')
+                break
+              }
               console.error(`Error fetching PRs for ${fromStr} to ${toStr}:`, err)
-              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1, errors: prev.errors + 1 }))
+              if (!isCancelled) {
+                setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1, errors: prev.errors + 1 }))
+              }
             }
 
             try {
-              const commitsData = await api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`)
+              const commitsData = await api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+
+              // Check if request was cancelled
+              if (isCancelled) break
+
               if (commitsData.commits && commitsData.commits.length === 100) {
                 console.error(`🚨 PAGINATION LIMIT HIT! Commits endpoint returned exactly 100 items for ${username} (${fromStr} to ${toStr}). Chunk size may be too large!`)
               }
               chunkCommitsCount = (commitsData.commits || []).length
-              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+              if (!isCancelled) {
+                setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+              }
 
               const chunkKey = fromStr
-              setChunkStats(prev => ({
-                ...prev,
-                [chunkKey]: {
-                  ...prev[chunkKey],
-                  commits: chunkCommitsCount,
-                  from: chunk.from,
-                  to: chunk.to
-                }
-              }))
+              if (!isCancelled) {
+                setChunkStats(prev => ({
+                  ...prev,
+                  [chunkKey]: {
+                    ...prev[chunkKey],
+                    commits: chunkCommitsCount,
+                    from: chunk.from,
+                    to: chunk.to
+                  }
+                }))
 
-              setCommits(prev => {
-                const existingShas = new Set(prev.commits.map(c => c.sha))
-                const newCommits = (commitsData.commits || []).filter(c => !existingShas.has(c.sha))
-                return {
-                  commits: [...prev.commits, ...newCommits],
-                  count: prev.commits.length + newCommits.length
-                }
-              })
+                setCommits(prev => {
+                  const existingShas = new Set(prev.commits.map(c => c.sha))
+                  const newCommits = (commitsData.commits || []).filter(c => !existingShas.has(c.sha))
+                  return {
+                    commits: [...prev.commits, ...newCommits],
+                    count: prev.commits.length + newCommits.length
+                  }
+                })
+              }
             } catch (err) {
+              if (err.name === 'AbortError') {
+                console.log('[UserDetail] Request aborted')
+                break
+              }
               console.error(`Error fetching commits for ${fromStr} to ${toStr}:`, err)
-              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1, errors: prev.errors + 1 }))
+              if (!isCancelled) {
+                setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1, errors: prev.errors + 1 }))
+              }
             }
 
             try {
-              const reviewsData = await api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`)
+              const reviewsData = await api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+
+              // Check if request was cancelled
+              if (isCancelled) break
+
               if (reviewsData.reviews && reviewsData.reviews.length === 100) {
                 console.error(`🚨 PAGINATION LIMIT HIT! Reviews endpoint returned exactly 100 items for ${username} (${fromStr} to ${toStr}). Chunk size may be too large!`)
               }
               chunkReviewsCount = (reviewsData.reviews || []).length
-              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+              if (!isCancelled) {
+                setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+              }
 
               const chunkKey = fromStr
-              setChunkStats(prev => ({
-                ...prev,
-                [chunkKey]: {
-                  ...prev[chunkKey],
-                  reviews: chunkReviewsCount,
-                  from: chunk.from,
-                  to: chunk.to
-                }
-              }))
+              if (!isCancelled) {
+                setChunkStats(prev => ({
+                  ...prev,
+                  [chunkKey]: {
+                    ...prev[chunkKey],
+                    reviews: chunkReviewsCount,
+                    from: chunk.from,
+                    to: chunk.to
+                  }
+                }))
 
-              setReviews(prev => {
-                const existingIds = new Set(prev.reviews.map(r => r.id))
-                const newReviews = (reviewsData.reviews || []).filter(r => !existingIds.has(r.id))
-                return {
-                  reviews: [...prev.reviews, ...newReviews],
-                  count: prev.reviews.length + newReviews.length
-                }
-              })
+                setReviews(prev => {
+                  const existingIds = new Set(prev.reviews.map(r => r.id))
+                  const newReviews = (reviewsData.reviews || []).filter(r => !existingIds.has(r.id))
+                  return {
+                    reviews: [...prev.reviews, ...newReviews],
+                    count: prev.reviews.length + newReviews.length
+                  }
+                })
+              }
             } catch (err) {
+              if (err.name === 'AbortError') {
+                console.log('[UserDetail] Request aborted')
+                break
+              }
               console.error(`Error fetching reviews for ${fromStr} to ${toStr}:`, err)
-              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1, errors: prev.errors + 1 }))
+              if (!isCancelled) {
+                setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1, errors: prev.errors + 1 }))
+              }
             }
 
             // Check if this chunk was empty
@@ -202,7 +269,10 @@ export function UserDetail() {
 
             try {
               // Fetch PRs for this chunk
-              const prsData = await api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`)
+              const prsData = await api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+
+              // Check if request was cancelled
+              if (isCancelled) return
 
               // Safety check for pagination limit
               if (prsData.prs && prsData.prs.length === 100) {
@@ -210,39 +280,50 @@ export function UserDetail() {
               }
 
               counter.value++
-              setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
+              if (!isCancelled) {
+                setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
 
-              // Update chunk stats
-              const chunkKey = fromStr
-              setChunkStats(prev => ({
-                ...prev,
-                [chunkKey]: {
-                  ...prev[chunkKey],
-                  prs: (prsData.prs || []).length,
-                  from: chunk.from,
-                  to: chunk.to
-                }
-              }))
+                // Update chunk stats
+                const chunkKey = fromStr
+                setChunkStats(prev => ({
+                  ...prev,
+                  [chunkKey]: {
+                    ...prev[chunkKey],
+                    prs: (prsData.prs || []).length,
+                    from: chunk.from,
+                    to: chunk.to
+                  }
+                }))
 
-              // Progressively update UI with partial results (deduplicate by ID)
-              setPrs(prev => {
-                const existingIds = new Set(prev.prs.map(pr => pr.id))
-                const newPrs = (prsData.prs || []).filter(pr => !existingIds.has(pr.id))
-                return {
-                  prs: [...prev.prs, ...newPrs],
-                  count: prev.prs.length + newPrs.length
-                }
-              })
+                // Progressively update UI with partial results (deduplicate by ID)
+                setPrs(prev => {
+                  const existingIds = new Set(prev.prs.map(pr => pr.id))
+                  const newPrs = (prsData.prs || []).filter(pr => !existingIds.has(pr.id))
+                  return {
+                    prs: [...prev.prs, ...newPrs],
+                    count: prev.prs.length + newPrs.length
+                  }
+                })
+              }
             } catch (err) {
+              if (err.name === 'AbortError') {
+                console.log('[UserDetail] Request aborted')
+                return
+              }
               console.error(`Error fetching PRs for ${fromStr} to ${toStr}:`, err)
               counter.value++
               counter.errors++
-              setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
+              if (!isCancelled) {
+                setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
+              }
             }
 
             try {
               // Fetch commits for this chunk
-              const commitsData = await api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`)
+              const commitsData = await api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+
+              // Check if request was cancelled
+              if (isCancelled) return
 
               // Safety check for pagination limit
               if (commitsData.commits && commitsData.commits.length === 100) {
@@ -250,39 +331,50 @@ export function UserDetail() {
               }
 
               counter.value++
-              setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
+              if (!isCancelled) {
+                setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
 
-              // Update chunk stats
-              const chunkKey = fromStr
-              setChunkStats(prev => ({
-                ...prev,
-                [chunkKey]: {
-                  ...prev[chunkKey],
-                  commits: (commitsData.commits || []).length,
-                  from: chunk.from,
-                  to: chunk.to
-                }
-              }))
+                // Update chunk stats
+                const chunkKey = fromStr
+                setChunkStats(prev => ({
+                  ...prev,
+                  [chunkKey]: {
+                    ...prev[chunkKey],
+                    commits: (commitsData.commits || []).length,
+                    from: chunk.from,
+                    to: chunk.to
+                  }
+                }))
 
-              // Progressively update UI (deduplicate by SHA)
-              setCommits(prev => {
-                const existingShas = new Set(prev.commits.map(c => c.sha))
-                const newCommits = (commitsData.commits || []).filter(c => !existingShas.has(c.sha))
-                return {
-                  commits: [...prev.commits, ...newCommits],
-                  count: prev.commits.length + newCommits.length
-                }
-              })
+                // Progressively update UI (deduplicate by SHA)
+                setCommits(prev => {
+                  const existingShas = new Set(prev.commits.map(c => c.sha))
+                  const newCommits = (commitsData.commits || []).filter(c => !existingShas.has(c.sha))
+                  return {
+                    commits: [...prev.commits, ...newCommits],
+                    count: prev.commits.length + newCommits.length
+                  }
+                })
+              }
             } catch (err) {
+              if (err.name === 'AbortError') {
+                console.log('[UserDetail] Request aborted')
+                return
+              }
               console.error(`Error fetching commits for ${fromStr} to ${toStr}:`, err)
               counter.value++
               counter.errors++
-              setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
+              if (!isCancelled) {
+                setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
+              }
             }
 
             try {
               // Fetch reviews for this chunk
-              const reviewsData = await api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`)
+              const reviewsData = await api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+
+              // Check if request was cancelled
+              if (isCancelled) return
 
               // Safety check for pagination limit
               if (reviewsData.reviews && reviewsData.reviews.length === 100) {
@@ -290,34 +382,42 @@ export function UserDetail() {
               }
 
               counter.value++
-              setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
+              if (!isCancelled) {
+                setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
 
-              // Update chunk stats
-              const chunkKey = fromStr
-              setChunkStats(prev => ({
-                ...prev,
-                [chunkKey]: {
-                  ...prev[chunkKey],
-                  reviews: (reviewsData.reviews || []).length,
-                  from: chunk.from,
-                  to: chunk.to
-                }
-              }))
+                // Update chunk stats
+                const chunkKey = fromStr
+                setChunkStats(prev => ({
+                  ...prev,
+                  [chunkKey]: {
+                    ...prev[chunkKey],
+                    reviews: (reviewsData.reviews || []).length,
+                    from: chunk.from,
+                    to: chunk.to
+                  }
+                }))
 
-              // Progressively update UI (deduplicate by ID)
-              setReviews(prev => {
-                const existingIds = new Set(prev.reviews.map(r => r.id))
-                const newReviews = (reviewsData.reviews || []).filter(r => !existingIds.has(r.id))
-                return {
-                  reviews: [...prev.reviews, ...newReviews],
-                  count: prev.reviews.length + newReviews.length
-                }
-              })
+                // Progressively update UI (deduplicate by ID)
+                setReviews(prev => {
+                  const existingIds = new Set(prev.reviews.map(r => r.id))
+                  const newReviews = (reviewsData.reviews || []).filter(r => !existingIds.has(r.id))
+                  return {
+                    reviews: [...prev.reviews, ...newReviews],
+                    count: prev.reviews.length + newReviews.length
+                  }
+                })
+              }
             } catch (err) {
+              if (err.name === 'AbortError') {
+                console.log('[UserDetail] Request aborted')
+                return
+              }
               console.error(`Error fetching reviews for ${fromStr} to ${toStr}:`, err)
               counter.value++
               counter.errors++
-              setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
+              if (!isCancelled) {
+                setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
+              }
             }
           })
         )
@@ -337,6 +437,13 @@ export function UserDetail() {
   }
 
     fetchUserData()
+
+    // Cleanup function to abort ongoing requests when period changes
+    return () => {
+      console.log('[UserDetail] Aborting previous fetch cycle')
+      isCancelled = true
+      abortController.abort()
+    }
   }, [username, period])
 
   const refreshLatestChunk = async () => {
@@ -501,6 +608,28 @@ export function UserDetail() {
     { value: '365days', label: '365 Days' },
     { value: 'all-time', label: 'All Time' }
   ]
+
+  // Helper function to determine if a period option should be disabled during loading
+  const isPeriodDisabled = (optionValue) => {
+    if (fetchProgress.total === 0 || fetchProgress.loaded >= fetchProgress.total) {
+      return false // Not loading, enable all
+    }
+
+    // Map period values to their relative sizes
+    const periodSizes = {
+      '30days': 1,
+      '90days': 2,
+      '365days': 3,
+      'all-time': 4
+    }
+
+    const currentSize = periodSizes[period] || 0
+    const optionSize = periodSizes[optionValue] || 0
+
+    // Disable if option is smaller than or equal to current period
+    // (prevents wasteful API calls and disables current button during load)
+    return optionSize <= currentSize
+  }
 
   // Component for grouping items by repository
   function RepositoryGroupedList({ items, type }) {
@@ -670,7 +799,7 @@ export function UserDetail() {
               key={option.value}
               onClick={() => setPeriod(option.value)}
               className={`day-button ${period === option.value ? 'day-button-active' : ''}`}
-              disabled={loading && fetchProgress.total > 0}
+              disabled={isPeriodDisabled(option.value)}
             >
               {option.label}
             </button>

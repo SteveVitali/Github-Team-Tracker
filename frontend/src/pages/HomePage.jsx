@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Tabs } from '../components/Tabs'
 import { TeamsList } from './TeamsList'
 import { UsersList } from './UsersList'
@@ -7,7 +7,11 @@ import { indexedDBCache } from '../indexeddb-cache'
 import './HomePage.css'
 
 export function HomePage() {
-  const [activeTab, setActiveTab] = useState('teams')
+  // Initialize activeTab from localStorage
+  const [activeTab, setActiveTab] = useState(() => {
+    const stored = localStorage.getItem('homepage-tab')
+    return stored || 'teams'
+  })
   const [teamsCount, setTeamsCount] = useState(null)
   const [usersCount, setUsersCount] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -15,6 +19,11 @@ export function HomePage() {
 
   // Restore scroll position when returning to homepage
   useScrollRestoration('homepage')
+
+  // Save activeTab to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('homepage-tab', activeTab)
+  }, [activeTab])
 
   const tabs = [
     { id: 'teams', label: teamsCount !== null ? `Teams (${teamsCount})` : 'Teams' },
