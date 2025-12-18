@@ -3,15 +3,9 @@
   margin: 0 auto;
 }
 
-.header-with-back {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
-}
-
 .back-link {
   display: inline-block;
+  margin-bottom: 1.5rem;
   color: #0969da;
   text-decoration: none;
   font-weight: 500;
