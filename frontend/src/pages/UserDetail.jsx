@@ -809,7 +809,16 @@ export function UserDetail() {
 
   return (
     <div className="user-detail-container">
-      <Link to="/" className="back-link">← Back to Teams</Link>
+      <div className="header-with-back">
+        <Link to="/" className="back-link">← Back to Teams</Link>
+        <button
+          onClick={handleExportUserCache}
+          className="export-button-inline"
+          title="Export cached data for this user"
+        >
+          ⬇ Export Cache
+        </button>
+      </div>
 
       {/* Progress bar at the top */}
       {fetchProgress.total > 0 && (
@@ -848,19 +857,8 @@ export function UserDetail() {
           <div className="avatar-placeholder">{username.charAt(0).toUpperCase()}</div>
         </div>
         <div className="user-info">
-          <div className="header-with-export">
-            <div>
-              <h2>{userInfo?.name || username}</h2>
-              <p className="username">@{username}</p>
-            </div>
-            <button
-              onClick={handleExportUserCache}
-              className="export-button-inline"
-              title="Export cached data for this user"
-            >
-              ⬇ Export Cache
-            </button>
-          </div>
+          <h2>{userInfo?.name || username}</h2>
+          <p className="username">@{username}</p>
         </div>
       </div>
 

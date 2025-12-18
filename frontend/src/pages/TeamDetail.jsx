@@ -702,7 +702,16 @@ export function TeamDetail() {
 
   return (
     <div className="team-detail-container">
-      <Link to="/" className="back-link">← Back to Teams</Link>
+      <div className="header-with-back">
+        <Link to="/" className="back-link">← Back to Teams</Link>
+        <button
+          onClick={handleExportTeamCache}
+          className="export-button-inline"
+          title="Export cached data for this team"
+        >
+          ⬇ Export Cache
+        </button>
+      </div>
 
       {/* Progress bar at the top */}
       {fetchProgress.total > 0 && fetchProgress.loaded < fetchProgress.total && (
@@ -737,16 +746,7 @@ export function TeamDetail() {
       )}
 
       <div className="team-info">
-        <div className="header-with-export">
-          <h2>{team?.name || teamSlug}</h2>
-          <button
-            onClick={handleExportTeamCache}
-            className="export-button-inline"
-            title="Export cached data for this team"
-          >
-            ⬇ Export Cache
-          </button>
-        </div>
+        <h2>{team?.name || teamSlug}</h2>
         {team?.description && <p className="team-description">{team.description}</p>}
 
         <div className="team-stats">
