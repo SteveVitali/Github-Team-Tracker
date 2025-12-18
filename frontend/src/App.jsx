@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage'
 import { HomePage } from './pages/HomePage'
 import { TeamDetail } from './pages/TeamDetail'
 import { UserDetail } from './pages/UserDetail'
+import { RequestCounter } from './components/RequestCounter'
 
 function Header() {
   const { user, logout } = useAuth()
@@ -17,6 +18,7 @@ function Header() {
       </Link>
       {user && (
         <div className="header-user">
+          <RequestCounter />
           <span className="user-name">{user.name || user.username}</span>
           <button onClick={logout} className="logout-button">
             Logout

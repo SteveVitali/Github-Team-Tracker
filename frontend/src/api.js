@@ -15,12 +15,45 @@ class ApiClient {
     this.maxConcurrentRequests = 10 // Maximum concurrent network requests
     this.requestQueue = [] // Queue of pending requests
     this.activeRequests = 0 // Count of currently active requests
+    this.queuedRequests = 0 // Count of queued requests
+
+    // Stats change listeners for UI updates
+    this.statsListeners = new Set()
 
     // Auto-clear cache if DEFAULT_CACHE_TTL is 0 (development mode)
     if (DEFAULT_CACHE_TTL === 0) {
       console.log('🗑️  Cache TTL is 0, clearing all cache on startup')
       this.clearCache() // async but fire-and-forget is fine for startup
     }
+  }
+
+  /**
+   * Subscribe to request stats changes
+   * @param {Function} listener - Callback function that receives { active, queued, total }
+   * @returns {Function} Unsubscribe function
+   */
+  onStatsChange(listener) {
+    this.statsListeners.add(listener)
+    // Immediately call with current stats
+    listener({
+      active: this.activeRequests,
+      queued: this.queuedRequests,
+      total: this.activeRequests + this.queuedRequests
+    })
+    // Return unsubscribe function
+    return () => this.statsListeners.delete(listener)
+  }
+
+  /**
+   * Notify all listeners of stats change
+   */
+  notifyStatsChange() {
+    const stats = {
+      active: this.activeRequests,
+      queued: this.queuedRequests,
+      total: this.activeRequests + this.queuedRequests
+    }
+    this.statsListeners.forEach(listener => listener(stats))
   }
 
   /**
@@ -133,19 +166,23 @@ class ApiClient {
     }
 
     const { executor, signal } = this.requestQueue.shift()
+    this.queuedRequests--
 
     // Check if request was aborted before it even started
     if (signal && signal.aborted) {
       console.log('[Queue] Request aborted before execution')
+      this.notifyStatsChange()
       this.processQueue() // Try next item
       return
     }
 
     this.activeRequests++
+    this.notifyStatsChange()
 
     executor()
       .finally(() => {
         this.activeRequests--
+        this.notifyStatsChange()
         this.processQueue() // Process next item
       })
   }
@@ -154,9 +191,10 @@ class ApiClient {
    * Enqueue a request to be executed when a slot is available
    * @param {Function} executor - Function that returns a promise
    * @param {AbortSignal} signal - Optional abort signal
+   * @param {string} priority - 'high' for stack behavior (new pages), 'normal' for queue behavior (same page)
    * @returns {Promise} Promise that resolves when the request completes
    */
-  enqueueRequest(executor, signal = null) {
+  enqueueRequest(executor, signal = null, priority = 'normal') {
     return new Promise((resolve, reject) => {
       const wrappedExecutor = () => {
         // Check abort signal one more time before executing
@@ -168,7 +206,16 @@ class ApiClient {
         return executor().then(resolve).catch(reject)
       }
 
-      this.requestQueue.push({ executor: wrappedExecutor, signal })
+      // Stack behavior: high priority goes to front (LIFO)
+      // Queue behavior: normal priority goes to back (FIFO)
+      if (priority === 'high') {
+        this.requestQueue.unshift({ executor: wrappedExecutor, signal })
+      } else {
+        this.requestQueue.push({ executor: wrappedExecutor, signal })
+      }
+
+      this.queuedRequests++
+      this.notifyStatsChange()
       this.processQueue()
     })
   }

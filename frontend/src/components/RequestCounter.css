@@ -1,0 +1,44 @@
+.request-counter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--color-bg-secondary, #f6f8fa);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #57606a);
+  margin-right: 1rem;
+}
+
+.counter-icon {
+  font-size: 1rem;
+  animation: rotate 2s linear infinite;
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.counter-stats {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.counter-active {
+  color: var(--color-success, #1a7f37);
+  font-weight: 500;
+}
+
+.counter-queued {
+  color: var(--color-text-secondary, #57606a);
+}
+
+.counter-separator {
+  color: var(--color-text-secondary, #57606a);
+}
