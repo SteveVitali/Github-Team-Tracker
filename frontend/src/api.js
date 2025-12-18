@@ -82,20 +82,31 @@ class ApiClient {
   setCache(endpoint, data, ttl = DEFAULT_CACHE_TTL) {
     if (!this.cacheEnabled) return
 
+    const cacheKey = this.getCacheKey(endpoint)
+    const cacheData = {
+      data,
+      timestamp: Date.now(),
+      ttl,
+    }
+
     try {
-      const cacheKey = this.getCacheKey(endpoint)
-      const cacheData = {
-        data,
-        timestamp: Date.now(),
-        ttl,
-      }
       localStorage.setItem(cacheKey, JSON.stringify(cacheData))
       console.log(`💾 Cached ${endpoint} (TTL: ${ttl / 1000}s)`)
     } catch (error) {
-      console.warn('Cache write error:', error)
-      // If localStorage is full, clear old cache entries
+      // If localStorage is full, clear old cache entries and retry once
       if (error.name === 'QuotaExceededError') {
+        console.warn(`⚠️  localStorage quota exceeded, clearing old cache entries...`)
         this.clearOldCache()
+
+        // Retry the write after clearing
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(cacheData))
+          console.log(`💾 Cached ${endpoint} after clearing old entries (TTL: ${ttl / 1000}s)`)
+        } catch (retryError) {
+          console.warn(`❌ Cache write failed even after clearing old entries:`, retryError)
+        }
+      } else {
+        console.warn('Cache write error:', error)
       }
     }
   }
