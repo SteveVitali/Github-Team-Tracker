@@ -55,13 +55,39 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Request logging middleware
+// Concurrent request tracking
+let concurrentRequests = 0;
+let peakConcurrentRequests = 0;
+
+// Request logging middleware with concurrency tracking
 app.use((req, res, next) => {
+  concurrentRequests++;
+  if (concurrentRequests > peakConcurrentRequests) {
+    peakConcurrentRequests = concurrentRequests;
+  }
+
   const start = Date.now();
+  const requestId = Math.random().toString(36).substring(7);
+
   res.on('finish', () => {
+    concurrentRequests--;
     const duration = Date.now() - start;
-    console.log(`${req.method} ${req.path} ${res.statusCode} - ${duration}ms`);
+    console.log(`[${requestId}] ${req.method} ${req.path} ${res.statusCode} - ${duration}ms [concurrent: ${concurrentRequests + 1}→${concurrentRequests}, peak: ${peakConcurrentRequests}]`);
   });
+
+  next();
+});
+
+// Concurrency limiting middleware
+app.use((req, res, next) => {
+  if (concurrentRequests > config.MAX_CONCURRENT_REQUESTS) {
+    res.status(503).json({
+      error: 'Service temporarily unavailable',
+      message: `Server is at maximum capacity (${config.MAX_CONCURRENT_REQUESTS} concurrent requests). Please try again shortly.`,
+      retryAfter: 1
+    });
+    return;
+  }
   next();
 });
 
