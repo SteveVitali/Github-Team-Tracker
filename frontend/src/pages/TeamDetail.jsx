@@ -30,8 +30,43 @@ export function TeamDetail() {
   useEffect(() => {
     const fetchTeam = async () => {
       try {
-        const result = await api.get(`/teams/${teamSlug}/members`)
-        setTeam(result)
+        // Handle synthetic "foursquare" team
+        if (teamSlug === 'foursquare') {
+          // Fetch all teams
+          const teamsResult = await api.get('/teams')
+          const teamsList = teamsResult.teams || teamsResult || []
+
+          // Fetch members for each team and deduplicate
+          const allMembersMap = new Map()
+
+          await Promise.all(
+            teamsList.map(async (team) => {
+              try {
+                const membersData = await api.get(`/teams/${team.slug}/members`)
+                const members = membersData.members || []
+                members.forEach(member => {
+                  allMembersMap.set(member.login, member)
+                })
+              } catch (err) {
+                console.error(`Error fetching members for ${team.slug}:`, err)
+              }
+            })
+          )
+
+          const distinctMembers = Array.from(allMembersMap.values())
+
+          setTeam({
+            name: 'Foursquare (All Users)',
+            slug: 'foursquare',
+            members: distinctMembers,
+            memberCount: distinctMembers.length,
+            description: 'Aggregated view of all distinct users across all teams'
+          })
+        } else {
+          // Regular team fetch
+          const result = await api.get(`/teams/${teamSlug}/members`)
+          setTeam(result)
+        }
       } catch (err) {
         setError(err.message)
       } finally {

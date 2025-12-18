@@ -18,12 +18,23 @@ export function TeamsList({ onCountChange, bypassCache = false }) {
         const result = await api.get('/teams', { bypassCache })
         const teamsList = result.teams || result || []
 
-        // Initialize teams without sorting yet
-        setTeams(teamsList)
+        // Add synthetic "foursquare" team at the beginning
+        const syntheticTeam = {
+          id: 'foursquare-synthetic',
+          slug: 'foursquare',
+          name: 'Foursquare (All Users)',
+          description: 'Aggregated view of all distinct users across all teams',
+          privacy: 'synthetic'
+        }
 
-        // Report count to parent
+        const teamsWithSynthetic = [syntheticTeam, ...teamsList]
+
+        // Initialize teams without sorting yet
+        setTeams(teamsWithSynthetic)
+
+        // Report count to parent (include synthetic team)
         if (onCountChange) {
-          onCountChange(teamsList.length)
+          onCountChange(teamsWithSynthetic.length)
         }
         setLoadingProgress({ loaded: 0, total: teamsList.length })
         setLoading(false)
@@ -72,8 +83,31 @@ export function TeamsList({ onCountChange, bypassCache = false }) {
           }
         })
 
-        // Wait for all to complete
-        await Promise.all(memberPromises)
+        // Wait for all to complete and collect members
+        const memberResults = await Promise.all(memberPromises)
+
+        // Create synthetic "foursquare" team with all distinct users
+        const allMembers = new Map() // Use Map to deduplicate by login
+        memberResults.forEach(result => {
+          if (result?.members) {
+            result.members.forEach(member => {
+              allMembers.set(member.login, member)
+            })
+          }
+        })
+
+        const distinctMembers = Array.from(allMembers.values())
+
+        // Add synthetic team to teamsWithMembers
+        setTeamsWithMembers(prev => ({
+          ...prev,
+          'foursquare': {
+            members: distinctMembers,
+            memberCount: distinctMembers.length,
+            loaded: true,
+            synthetic: true
+          }
+        }))
 
       } catch (err) {
         setError(err.message)
