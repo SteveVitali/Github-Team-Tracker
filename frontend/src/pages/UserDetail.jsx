@@ -621,12 +621,6 @@ export function UserDetail() {
     )
   }
 
-  const tabs = [
-    { id: 'prs', label: 'Pull Requests', count: filteredPrs?.count },
-    { id: 'commits', label: 'Commits', count: filteredCommits?.count },
-    { id: 'reviews', label: 'Reviews', count: filteredReviews?.count }
-  ]
-
   const periodOptions = [
     { value: '7days', label: '7 Days' },
     { value: '30days', label: '30 Days' },
@@ -665,6 +659,11 @@ export function UserDetail() {
     count: filterByPeriod(reviews.reviews || [], 'createdAt').length
   }), [reviews, period])
 
+  const tabs = [
+    { id: 'prs', label: 'Pull Requests', count: filteredPrs?.count },
+    { id: 'commits', label: 'Commits', count: filteredCommits?.count },
+    { id: 'reviews', label: 'Reviews', count: filteredReviews?.count }
+  ]
 
   // Component for grouping items by repository
   function RepositoryGroupedList({ items, type }) {
@@ -836,8 +835,19 @@ export function UserDetail() {
           <div className="avatar-placeholder">{username.charAt(0).toUpperCase()}</div>
         </div>
         <div className="user-info">
-          <h2>{userInfo?.name || username}</h2>
-          <p className="username">@{username}</p>
+          <div className="header-with-export">
+            <div>
+              <h2>{userInfo?.name || username}</h2>
+              <p className="username">@{username}</p>
+            </div>
+            <button
+              onClick={handleExportUserCache}
+              className="export-button-inline"
+              title="Export cached data for this user"
+            >
+              ⬇ Export Cache
+            </button>
+          </div>
         </div>
       </div>
 
@@ -860,13 +870,6 @@ export function UserDetail() {
             title="Refresh latest data (bypasses cache)"
           >
             {refreshingLatest ? '↻ Refreshing...' : '↻ Refresh Latest'}
-          </button>
-          <button
-            onClick={handleExportUserCache}
-            className="export-button"
-            title="Export cached data for this user"
-          >
-            ⬇ Export User Cache
           </button>
         </div>
       </div>

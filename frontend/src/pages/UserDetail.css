@@ -62,6 +62,35 @@
   flex: 1;
 }
 
+.header-with-export {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  width: 100%;
+}
+
+.export-button-inline {
+  padding: 0.375rem 0.75rem;
+  background: #0969da;
+  border: 1px solid #0969da;
+  border-radius: 6px;
+  color: white;
+  font-weight: 500;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+  white-space: nowrap;
+  height: fit-content;
+  flex-shrink: 0;
+}
+
+.export-button-inline:hover {
+  background: #0550ae;
+  border-color: #0550ae;
+}
+
 .user-info h2 {
   margin: 0 0 0.5rem 0;
   font-size: 2rem;

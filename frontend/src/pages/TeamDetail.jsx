@@ -723,7 +723,16 @@ export function TeamDetail() {
       )}
 
       <div className="team-info">
-        <h2>{team?.name || teamSlug}</h2>
+        <div className="header-with-export">
+          <h2>{team?.name || teamSlug}</h2>
+          <button
+            onClick={handleExportTeamCache}
+            className="export-button-inline"
+            title="Export cached data for this team"
+          >
+            ⬇ Export Cache
+          </button>
+        </div>
         {team?.description && <p className="team-description">{team.description}</p>}
 
         <div className="team-stats">
@@ -761,13 +770,6 @@ export function TeamDetail() {
               title="Refresh latest data for all members (bypasses cache)"
             >
               {refreshingLatest ? '↻ Refreshing...' : '↻ Refresh Latest'}
-            </button>
-            <button
-              onClick={handleExportTeamCache}
-              className="export-button"
-              title="Export cached data for this team"
-            >
-              ⬇ Export Team Cache
             </button>
           </div>
         </div>
