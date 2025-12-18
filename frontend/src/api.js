@@ -11,6 +11,11 @@ class ApiClient {
     this.cacheEnabled = true
     this.inFlightRequests = new Map() // Track in-flight requests to prevent duplicates
 
+    // Request queue configuration
+    this.maxConcurrentRequests = 10 // Maximum concurrent network requests
+    this.requestQueue = [] // Queue of pending requests
+    this.activeRequests = 0 // Count of currently active requests
+
     // Auto-clear cache if DEFAULT_CACHE_TTL is 0 (development mode)
     if (DEFAULT_CACHE_TTL === 0) {
       console.log('🗑️  Cache TTL is 0, clearing all cache on startup')
@@ -119,35 +124,95 @@ class ApiClient {
     return this
   }
 
+  /**
+   * Process the next item in the request queue
+   */
+  processQueue() {
+    if (this.requestQueue.length === 0 || this.activeRequests >= this.maxConcurrentRequests) {
+      return
+    }
+
+    const { executor, signal } = this.requestQueue.shift()
+
+    // Check if request was aborted before it even started
+    if (signal && signal.aborted) {
+      console.log('[Queue] Request aborted before execution')
+      this.processQueue() // Try next item
+      return
+    }
+
+    this.activeRequests++
+
+    executor()
+      .finally(() => {
+        this.activeRequests--
+        this.processQueue() // Process next item
+      })
+  }
+
+  /**
+   * Enqueue a request to be executed when a slot is available
+   * @param {Function} executor - Function that returns a promise
+   * @param {AbortSignal} signal - Optional abort signal
+   * @returns {Promise} Promise that resolves when the request completes
+   */
+  enqueueRequest(executor, signal = null) {
+    return new Promise((resolve, reject) => {
+      const wrappedExecutor = () => {
+        // Check abort signal one more time before executing
+        if (signal && signal.aborted) {
+          reject(new DOMException('Request aborted', 'AbortError'))
+          return Promise.resolve()
+        }
+
+        return executor().then(resolve).catch(reject)
+      }
+
+      this.requestQueue.push({ executor: wrappedExecutor, signal })
+      this.processQueue()
+    })
+  }
+
   async request(endpoint, options = {}) {
     const url = `${API_URL}${endpoint}`
 
     // Check for PAT in localStorage
     const pat = localStorage.getItem('github_pat')
 
+    // Extract signal from options if provided
+    const { signal, ...fetchOptions } = options
+
     const config = {
       headers: {
         'Content-Type': 'application/json',
         ...(pat ? { 'Authorization': `Bearer ${pat}` } : {}),
-        ...options.headers,
+        ...fetchOptions.headers,
       },
       credentials: 'include', // Include cookies for session management
-      ...options,
+      signal, // Pass signal to fetch
+      ...fetchOptions,
     }
 
-    try {
-      const response = await fetch(url, config)
+    // Wrap the fetch in the queue system
+    return this.enqueueRequest(async () => {
+      try {
+        const response = await fetch(url, config)
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ message: 'Request failed' }))
-        throw new Error(error.message || `HTTP ${response.status}`)
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ message: 'Request failed' }))
+          throw new Error(error.message || `HTTP ${response.status}`)
+        }
+
+        return await response.json()
+      } catch (error) {
+        // Re-throw AbortError as-is
+        if (error.name === 'AbortError') {
+          throw error
+        }
+        console.error('API request failed:', error)
+        throw error
       }
-
-      return await response.json()
-    } catch (error) {
-      console.error('API request failed:', error)
-      throw error
-    }
+    }, signal)
   }
 
   async get(endpoint, options = {}) {
