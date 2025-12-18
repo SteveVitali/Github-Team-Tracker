@@ -31,7 +31,8 @@ A full-stack application for tracking GitHub team productivity, contributions, a
     │   ├── hooks/        - Custom React hooks
     │   │   └── useAuth.jsx - Authentication context provider
     │   ├── utils/        - Date chunking and utilities
-    │   └── api.js        - API client with caching and auth
+    │   ├── indexeddb-cache.js - IndexedDB caching layer
+    │   └── api.js        - API client with queue, caching, and auth
 ```
 
 ## Getting Started
@@ -122,10 +123,16 @@ The frontend development server runs on `http://localhost:3000`.
 - **User-Grouped PR Lists**: PRs organized by author within each status section (Open/Merged/Closed)
 - **Repository Grouping**: Contributions grouped by repository with collapsible sections
 - **Progressive Loading**: Real-time progress indicators during data fetching
-- **Smart Caching**: 30-day localStorage cache with manual refresh capability
+- **Smart Caching**: 30-day IndexedDB cache with manual refresh capability
 - **Date Range Filtering**: Filter by 30/90/365 days or all-time with optimized chunking
 - **All-Time Query Optimization**: Sequential processing with early termination for inactive periods
 - **Scroll Restoration**: Maintains scroll position when navigating back
+- **Tab State Persistence**: Remembers selected tabs (Teams/Users, Contributions/Members/PRs, PRs/Commits/Reviews) across navigation
+- **Graceful Request Cancellation**: Period changes abort in-progress requests via AbortController
+- **Smart Period Button Disabling**: During loading, only allows expanding to larger date ranges
+- **Request Queue Management**: Global queue limiting concurrent API calls to 10 with stack/queue prioritization
+- **Real-Time Request Counter**: Animated nav bar indicator showing active and queued API requests
+- **Export Cache Functionality**: Download cached data as JSON for teams, users, or entire dataset
 
 ## API Highlights
 
@@ -189,19 +196,24 @@ All contribution endpoints support flexible date filtering via query parameters 
 
 **Frontend:**
 - 30-day date chunking with fixed boundaries for consistent cache keys
-- localStorage caching with 30-day TTL to minimize API calls
+- IndexedDB caching with 30-day TTL to minimize API calls
 - Progressive UI updates during data fetching (not batch updates)
 - Deduplication by ID/SHA to prevent double-counting
 - Sequential processing for all-time queries with early termination after 3 consecutive empty chunks
 - Parallel processing for bounded time ranges (30/90/365 days)
+- AbortController pattern for graceful request cancellation on navigation or period changes
+- Global request queue with concurrency limiting (max 10 concurrent requests)
+- Observer pattern for real-time stats updates (active/queued request counts)
 
 ## Data Flow
 
 1. **Frontend** sends requests to backend API with date ranges
-2. **Backend** queries GitHub API with pagination and retry logic
-3. **Frontend** caches responses in localStorage with date-keyed buckets
-4. **Charts** aggregate data across chunks for visualization
-5. **Refresh button** bypasses cache for latest data
+2. **Requests** are queued with concurrency limit (max 10 active)
+3. **Backend** queries GitHub API with pagination and retry logic
+4. **Frontend** caches responses in IndexedDB with date-keyed buckets (30-day TTL)
+5. **Charts** aggregate data across chunks for visualization
+6. **Refresh button** bypasses cache for latest data
+7. **Navigation** aborts pending requests using AbortController
 
 ## Development
 
@@ -220,8 +232,12 @@ npm run dev
 ## Performance Optimizations
 
 - **Date Chunking**: Breaks large date ranges into 30-day segments for efficient API usage
-- **Chunk-Level Caching**: Each 30-day chunk is cached independently
+- **Chunk-Level Caching**: Each 30-day chunk is cached independently in IndexedDB
 - **Early Termination**: All-time queries stop after finding 3 consecutive empty chunks
 - **Progressive Loading**: UI updates as data streams in, not after all requests complete
 - **Deduplication**: Prevents counting the same PR/commit/review multiple times
 - **Parallel Fetching**: Non-all-time queries fetch all chunks simultaneously
+- **Request Queue**: Global concurrency limiting prevents overwhelming the server with 200+ simultaneous requests
+- **Request Cancellation**: Aborts in-flight and queued requests when navigating away or changing time periods
+- **In-Flight Request Deduplication**: Identical GET requests share the same promise to prevent redundant API calls
+- **Smart Cache Eviction**: Oldest entries cleared first when storage limits are reached
