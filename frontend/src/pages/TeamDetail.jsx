@@ -521,7 +521,21 @@ export function TeamDetail() {
 
   // Transform chunkStats into time-series chart data
   const timeSeriesChartData = useMemo(() => {
-    return Object.entries(chunkStats)
+    let filteredChunks = Object.entries(chunkStats)
+
+    // Apply 7-day filtering if period is 7days
+    if (period === '7days') {
+      const sevenDaysAgo = new Date()
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+      sevenDaysAgo.setHours(0, 0, 0, 0)
+
+      filteredChunks = filteredChunks.filter(([dateKey]) => {
+        const chunkDate = new Date(dateKey)
+        return chunkDate >= sevenDaysAgo
+      })
+    }
+
+    return filteredChunks
       .map(([dateKey, stats]) => ({
         name: dateKey, // YYYY-MM-DD format
         PRs: stats.prs || 0,
@@ -530,7 +544,7 @@ export function TeamDetail() {
         Total: (stats.prs || 0) + (stats.commits || 0) + (stats.reviews || 0)
       }))
       .sort((a, b) => a.name.localeCompare(b.name)) // Sort by date ascending (chronological)
-  }, [chunkStats])
+  }, [chunkStats, period])
 
   // Transform memberStats into chart data (sorted by total contributions descending)
   const chartData = useMemo(() => {

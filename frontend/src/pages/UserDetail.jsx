@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { api } from '../api'
 import { indexedDBCache } from '../indexeddb-cache'
 import { LoadingSpinner } from '../components/LoadingSpinner'
@@ -9,7 +9,6 @@ import './UserDetail.css'
 
 export function UserDetail() {
   const { username } = useParams()
-  const navigate = useNavigate()
   const [userInfo, setUserInfo] = useState({ username, name: username })
   const [prs, setPrs] = useState({ prs: [], count: 0 })
   const [commits, setCommits] = useState({ commits: [], count: 0 })
@@ -591,7 +590,21 @@ export function UserDetail() {
 
   // Transform chunk stats into time-series chart data
   const chartData = useMemo(() => {
-    return Object.entries(chunkStats)
+    let filteredChunks = Object.entries(chunkStats)
+
+    // Apply 7-day filtering if period is 7days
+    if (period === '7days') {
+      const sevenDaysAgo = new Date()
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+      sevenDaysAgo.setHours(0, 0, 0, 0)
+
+      filteredChunks = filteredChunks.filter(([dateKey]) => {
+        const chunkDate = new Date(dateKey)
+        return chunkDate >= sevenDaysAgo
+      })
+    }
+
+    return filteredChunks
       .map(([dateKey, stats]) => ({
         name: dateKey, // YYYY-MM-DD format
         PRs: stats.prs || 0,
@@ -600,7 +613,7 @@ export function UserDetail() {
         Total: (stats.prs || 0) + (stats.commits || 0) + (stats.reviews || 0)
       }))
       .sort((a, b) => a.name.localeCompare(b.name)) // Sort by date ascending (chronological)
-  }, [chunkStats])
+  }, [chunkStats, period])
 
   // Calculate dynamic interval for chart x-axis labels to prevent cluttering
   const chartInterval = useMemo(() => {
@@ -612,7 +625,7 @@ export function UserDetail() {
   if (error) {
     return (
       <div className="user-detail-container">
-        <button onClick={() => navigate(-1)} className="back-button">← Back</button>
+        <Link to="/" className="back-link">← Back to Teams</Link>
         <div className="error-container">
           <h3>Error loading user stats</h3>
           <p>{error}</p>
@@ -796,7 +809,7 @@ export function UserDetail() {
 
   return (
     <div className="user-detail-container">
-      <button onClick={() => navigate(-1)} className="back-button">← Back</button>
+      <Link to="/" className="back-link">← Back to Teams</Link>
 
       {/* Progress bar at the top */}
       {fetchProgress.total > 0 && (
