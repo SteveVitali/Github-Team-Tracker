@@ -49,14 +49,14 @@ class ApiClient {
       const data = await indexedDBCache.get(cacheKey)
 
       if (data === null) {
-        console.log(`❌ Cache MISS for ${endpoint} (not found or expired)`)
+        console.log(`🔍 Cache MISS for ${endpoint} (not found or expired)`)
         return null
       }
 
       console.log(`✅ Cache HIT for ${endpoint}`)
       return data
     } catch (error) {
-      console.warn(`❌ Cache MISS for ${endpoint} (error: ${error.message})`)
+      console.warn(`🔍 Cache MISS for ${endpoint} (error: ${error.message})`)
       return null
     }
   }
@@ -153,7 +153,14 @@ class ApiClient {
   async get(endpoint, options = {}) {
     const { bypassCache = false, cacheTTL = DEFAULT_CACHE_TTL } = options
 
-    // Check cache first (unless bypassed)
+    // Check if this request is already in-flight to prevent duplicates (check before cache)
+    const requestKey = endpoint // Use endpoint as key since GET requests are idempotent
+    if (this.inFlightRequests.has(requestKey)) {
+      console.log(`🔄 Request DEDUPED for ${endpoint} (already in-flight)`)
+      return this.inFlightRequests.get(requestKey)
+    }
+
+    // Check cache (unless bypassed)
     if (!bypassCache) {
       const cached = await this.getFromCache(endpoint)
       if (cached !== null) {
@@ -161,13 +168,6 @@ class ApiClient {
       }
     } else {
       console.log(`⚠️  Cache BYPASSED for ${endpoint}`)
-    }
-
-    // Check if this request is already in-flight to prevent duplicates
-    const requestKey = endpoint // Use endpoint as key since GET requests are idempotent
-    if (this.inFlightRequests.has(requestKey)) {
-      console.log(`🔄 Request DEDUPED for ${endpoint} (already in-flight)`)
-      return this.inFlightRequests.get(requestKey)
     }
 
     // Make the request and cache the result
