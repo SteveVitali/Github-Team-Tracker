@@ -113,41 +113,46 @@ export function chunkDateRange(startDate, endDate) {
 
 /**
  * Get a date range for common time periods
+ * IMPORTANT: Returns fixed chunk-aligned boundaries to ensure consistent cache keys
  *
  * @param {string} period - One of: '30days', '90days', '365days', 'all-time'
  * @returns {{from: Date, to: Date}} Date range
  */
 export function getDateRangeForPeriod(period) {
   const now = new Date()
-  now.setHours(23, 59, 59, 999)
+
+  // Get the end of the current chunk (today's chunk)
+  const to = getChunkEnd(now)
 
   let from
 
   switch (period) {
     case '30days':
-      from = new Date(now)
-      from.setDate(from.getDate() - 30)
+      // Go back 1 full chunk (30 days)
+      from = getChunkStart(now)
       break
     case '90days':
-      from = new Date(now)
-      from.setDate(from.getDate() - 90)
+      // Go back 3 full chunks (90 days)
+      const ninetyDaysAgo = new Date(now)
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+      from = getChunkStart(ninetyDaysAgo)
       break
     case '365days':
-      from = new Date(now)
-      from.setDate(from.getDate() - 365)
+      // Go back 12 full chunks (~360 days)
+      const oneYearAgo = new Date(now)
+      oneYearAgo.setDate(oneYearAgo.getDate() - 365)
+      from = getChunkStart(oneYearAgo)
       break
     case 'all-time':
-      // Start from Jan 1, 2020 (adjust as needed)
-      from = new Date('2020-01-01T00:00:00Z')
+      // Start from April 19, 2021 (inclusive)
+      from = new Date('2021-04-19T00:00:00Z')
       break
     default:
-      from = new Date(now)
-      from.setDate(from.getDate() - 30)
+      // Default to 30 days
+      from = getChunkStart(now)
   }
 
-  from.setHours(0, 0, 0, 0)
-
-  return { from, to: now }
+  return { from, to }
 }
 
 /**
