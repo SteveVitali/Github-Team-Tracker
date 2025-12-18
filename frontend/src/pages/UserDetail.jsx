@@ -26,15 +26,28 @@ export function UserDetail() {
   // Initialize period from localStorage for this specific user
   const [period, setPeriod] = useState(() => {
     const stored = localStorage.getItem(`user-period-${username}`)
-    return stored || '30days'
+    return stored || '7days'
   })
 
   const [fetchProgress, setFetchProgress] = useState({ loaded: 0, total: 0, errors: 0 })
   const [queueStats, setQueueStats] = useState({ active: 0, queued: 0, total: 0 })
   const [refreshingLatest, setRefreshingLatest] = useState(false)
+  const [abortController, setAbortController] = useState(null)
   const [chunkStats, setChunkStats] = useState({}) // { 'YYYY-MM-DD': { prs: N, commits: N, reviews: N } }
   const [isStacked, setIsStacked] = useState(true)
   const [visibleSeries, setVisibleSeries] = useState({ prs: true, commits: true, reviews: true })
+
+  // Handler to cancel ongoing requests
+  const handleCancelRequests = () => {
+    if (abortController) {
+      console.log('[UserDetail] User cancelled requests')
+      abortController.abort()
+      // Clear the period selection to reset the UI
+      setPeriod('')
+      // Reset progress
+      setFetchProgress({ loaded: 0, total: 0, errors: 0 })
+    }
+  }
 
   // Save period to localStorage whenever it changes for this user
   useEffect(() => {
@@ -57,7 +70,8 @@ export function UserDetail() {
 
   useEffect(() => {
     // Create AbortController for this fetch cycle
-    const abortController = new AbortController()
+    const controller = new AbortController()
+    setAbortController(controller)
     let isCancelled = false
 
     const fetchUserData = async () => {
@@ -114,7 +128,7 @@ export function UserDetail() {
             let chunkReviewsCount = 0
 
             try {
-              const prsData = await api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+              const prsData = await api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`, { signal: controller.signal })
 
               // Check if request was cancelled
               if (isCancelled) break
@@ -160,7 +174,7 @@ export function UserDetail() {
             }
 
             try {
-              const commitsData = await api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+              const commitsData = await api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`, { signal: controller.signal })
 
               // Check if request was cancelled
               if (isCancelled) break
@@ -206,7 +220,7 @@ export function UserDetail() {
             }
 
             try {
-              const reviewsData = await api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+              const reviewsData = await api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`, { signal: controller.signal })
 
               // Check if request was cancelled
               if (isCancelled) break
@@ -279,7 +293,7 @@ export function UserDetail() {
 
             try {
               // Fetch PRs for this chunk
-              const prsData = await api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+              const prsData = await api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`, { signal: controller.signal })
 
               // Check if request was cancelled
               if (isCancelled) return
@@ -330,7 +344,7 @@ export function UserDetail() {
 
             try {
               // Fetch commits for this chunk
-              const commitsData = await api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+              const commitsData = await api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`, { signal: controller.signal })
 
               // Check if request was cancelled
               if (isCancelled) return
@@ -381,7 +395,7 @@ export function UserDetail() {
 
             try {
               // Fetch reviews for this chunk
-              const reviewsData = await api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+              const reviewsData = await api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`, { signal: controller.signal })
 
               // Check if request was cancelled
               if (isCancelled) return
@@ -452,7 +466,8 @@ export function UserDetail() {
     return () => {
       console.log('[UserDetail] Aborting previous fetch cycle')
       isCancelled = true
-      abortController.abort()
+      controller.abort()
+      setAbortController(null)
     }
   }, [username, period])
 
@@ -607,39 +622,49 @@ export function UserDetail() {
   }
 
   const tabs = [
-    { id: 'prs', label: 'Pull Requests', count: prs?.count },
-    { id: 'commits', label: 'Commits', count: commits?.count },
-    { id: 'reviews', label: 'Reviews', count: reviews?.count }
+    { id: 'prs', label: 'Pull Requests', count: filteredPrs?.count },
+    { id: 'commits', label: 'Commits', count: filteredCommits?.count },
+    { id: 'reviews', label: 'Reviews', count: filteredReviews?.count }
   ]
 
   const periodOptions = [
+    { value: '7days', label: '7 Days' },
     { value: '30days', label: '30 Days' },
     { value: '90days', label: '90 Days' },
     { value: '365days', label: '365 Days' },
     { value: 'all-time', label: 'All Time' }
   ]
 
-  // Helper function to determine if a period option should be disabled during loading
-  const isPeriodDisabled = (optionValue) => {
-    if (fetchProgress.total === 0 || fetchProgress.loaded >= fetchProgress.total) {
-      return false // Not loading, enable all
-    }
+  // Filter data based on period (client-side filtering for 7 days)
+  const filterByPeriod = (items, dateField) => {
+    if (period !== '7days') return items
 
-    // Map period values to their relative sizes
-    const periodSizes = {
-      '30days': 1,
-      '90days': 2,
-      '365days': 3,
-      'all-time': 4
-    }
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+    sevenDaysAgo.setHours(0, 0, 0, 0)
 
-    const currentSize = periodSizes[period] || 0
-    const optionSize = periodSizes[optionValue] || 0
-
-    // Disable if option is smaller than or equal to current period
-    // (prevents wasteful API calls and disables current button during load)
-    return optionSize <= currentSize
+    return items.filter(item => {
+      const itemDate = new Date(item[dateField])
+      return itemDate >= sevenDaysAgo
+    })
   }
+
+  // Apply filtering to data
+  const filteredPrs = useMemo(() => ({
+    prs: filterByPeriod(prs.prs || [], 'createdAt'),
+    count: filterByPeriod(prs.prs || [], 'createdAt').length
+  }), [prs, period])
+
+  const filteredCommits = useMemo(() => ({
+    commits: filterByPeriod(commits.commits || [], 'author.date'),
+    count: filterByPeriod(commits.commits || [], 'author.date').length
+  }), [commits, period])
+
+  const filteredReviews = useMemo(() => ({
+    reviews: filterByPeriod(reviews.reviews || [], 'createdAt'),
+    count: filterByPeriod(reviews.reviews || [], 'createdAt').length
+  }), [reviews, period])
+
 
   // Component for grouping items by repository
   function RepositoryGroupedList({ items, type }) {
@@ -782,17 +807,23 @@ export function UserDetail() {
               className="progress-bar"
               style={{ width: `${(fetchProgress.loaded / fetchProgress.total) * 100}%` }}
             />
+            {abortController && (
+              <button
+                onClick={handleCancelRequests}
+                className="progress-cancel-icon"
+                title="Cancel all pending requests"
+              >
+                ✕
+              </button>
+            )}
           </div>
           <div className="progress-text">
             <span className="progress-main">
               {fetchProgress.loaded} of {fetchProgress.total} completed
               ({Math.round((fetchProgress.loaded / fetchProgress.total) * 100)}%)
+              {queueStats.active > 0 && <> • {queueStats.active} in progress</>}
+              {queueStats.queued > 0 && <> • {queueStats.queued} queued</>}
             </span>
-            {queueStats.total > 0 && (
-              <span className="progress-queue">
-                {' • '}{queueStats.active} active, {queueStats.queued} queued
-              </span>
-            )}
             {fetchProgress.errors > 0 && (
               <span className="error-count"> • {fetchProgress.errors} failed</span>
             )}
@@ -818,7 +849,6 @@ export function UserDetail() {
               key={option.value}
               onClick={() => setPeriod(option.value)}
               className={`day-button ${period === option.value ? 'day-button-active' : ''}`}
-              disabled={isPeriodDisabled(option.value)}
             >
               {option.label}
             </button>
@@ -925,15 +955,15 @@ export function UserDetail() {
 
       <div className="summary-cards">
         <div className="summary-card">
-          <div className="summary-value">{prs?.count || 0}</div>
+          <div className="summary-value">{filteredPrs?.count || 0}</div>
           <div className="summary-label">Pull Requests</div>
         </div>
         <div className="summary-card">
-          <div className="summary-value">{commits?.count || 0}</div>
+          <div className="summary-value">{filteredCommits?.count || 0}</div>
           <div className="summary-label">Commits</div>
         </div>
         <div className="summary-card">
-          <div className="summary-value">{reviews?.count || 0}</div>
+          <div className="summary-value">{filteredReviews?.count || 0}</div>
           <div className="summary-label">Reviews</div>
         </div>
       </div>
@@ -953,9 +983,9 @@ export function UserDetail() {
       <div className="tab-content">
         {activeTab === 'prs' && (
           <div className="prs-list">
-            {prs?.prs && prs.prs.length > 0 ? (
+            {filteredPrs?.prs && filteredPrs.prs.length > 0 ? (
               <RepositoryGroupedList
-                items={prs.prs}
+                items={filteredPrs.prs}
                 type="pr"
               />
             ) : (
@@ -966,9 +996,9 @@ export function UserDetail() {
 
         {activeTab === 'commits' && (
           <div className="commits-list">
-            {commits?.commits && commits.commits.length > 0 ? (
+            {filteredCommits?.commits && filteredCommits.commits.length > 0 ? (
               <RepositoryGroupedList
-                items={commits.commits}
+                items={filteredCommits.commits}
                 type="commit"
               />
             ) : (
@@ -979,9 +1009,9 @@ export function UserDetail() {
 
         {activeTab === 'reviews' && (
           <div className="reviews-list">
-            {reviews?.reviews && reviews.reviews.length > 0 ? (
+            {filteredReviews?.reviews && filteredReviews.reviews.length > 0 ? (
               <RepositoryGroupedList
-                items={reviews.reviews}
+                items={filteredReviews.reviews}
                 type="review"
               />
             ) : (

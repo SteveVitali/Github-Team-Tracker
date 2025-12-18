@@ -105,11 +105,13 @@ export function HomePage() {
 
       <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
-      {activeTab === 'teams' ? (
+      {/* Render both lists but hide the inactive one to load counts */}
+      <div style={{ display: activeTab === 'teams' ? 'block' : 'none' }}>
         <TeamsList key={`teams-${refreshKey}`} onCountChange={setTeamsCount} bypassCache={refreshKey > 0} />
-      ) : (
+      </div>
+      <div style={{ display: activeTab === 'users' ? 'block' : 'none' }}>
         <UsersList key={`users-${refreshKey}`} onCountChange={setUsersCount} bypassCache={refreshKey > 0} />
-      )}
+      </div>
     </div>
   )
 }

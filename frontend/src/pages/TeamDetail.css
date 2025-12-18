@@ -460,6 +460,34 @@
   border-color: #0550ae;
 }
 
+.progress-bar-container {
+  position: relative;
+}
+
+.progress-cancel-icon {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0.25rem;
+  background: rgba(255, 255, 255, 0.8);
+  border: none;
+  border-radius: 3px;
+  color: #57606a;
+  font-weight: 400;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+  line-height: 1;
+  z-index: 10;
+}
+
+.progress-cancel-icon:hover {
+  background: rgba(255, 255, 255, 0.95);
+  color: #cf222e;
+}
+
 /* Team PRs section */
 .team-prs-section {
   margin-top: 2rem;

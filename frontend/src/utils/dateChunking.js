@@ -115,7 +115,7 @@ export function chunkDateRange(startDate, endDate) {
  * Get a date range for common time periods
  * IMPORTANT: Returns fixed chunk-aligned boundaries to ensure consistent cache keys
  *
- * @param {string} period - One of: '30days', '90days', '365days', 'all-time'
+ * @param {string} period - One of: '7days', '30days', '90days', '365days', 'all-time'
  * @returns {{from: Date, to: Date}} Date range
  */
 export function getDateRangeForPeriod(period) {
@@ -127,6 +127,11 @@ export function getDateRangeForPeriod(period) {
   let from
 
   switch (period) {
+    case '7days':
+      // For 7 days, fetch the current chunk but we'll filter client-side
+      // This ensures we use cached data from the 30-day chunk
+      from = getChunkStart(now)
+      break
     case '30days':
       // Go back 1 full chunk (30 days)
       from = getChunkStart(now)
@@ -148,7 +153,7 @@ export function getDateRangeForPeriod(period) {
       from = new Date('2021-04-19T00:00:00Z')
       break
     default:
-      // Default to 30 days
+      // Default to 7 days
       from = getChunkStart(now)
   }
 

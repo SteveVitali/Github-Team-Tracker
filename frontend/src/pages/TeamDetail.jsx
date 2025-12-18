@@ -21,7 +21,7 @@ export function TeamDetail() {
   // Initialize period from localStorage for this specific team
   const [period, setPeriod] = useState(() => {
     const stored = localStorage.getItem(`team-period-${teamSlug}`)
-    return stored || '30days'
+    return stored || '7days'
   })
 
   const [refreshingLatest, setRefreshingLatest] = useState(false)
@@ -31,11 +31,24 @@ export function TeamDetail() {
   const [isStacked, setIsStacked] = useState(true)
   const [visibleSeries, setVisibleSeries] = useState({ prs: true, commits: true, reviews: true })
   const [chunkStats, setChunkStats] = useState({}) // { 'YYYY-MM-DD': { prs: N, commits: N, reviews: N } }
+  const [abortController, setAbortController] = useState(null)
+
+  // Handler to cancel ongoing requests
+  const handleCancelRequests = () => {
+    if (abortController) {
+      console.log('[TeamDetail] User cancelled requests')
+      abortController.abort()
+      // Clear the period selection to reset the UI
+      setPeriod('')
+      // Reset progress
+      setFetchProgress({ loaded: 0, total: 0, errors: 0 })
+    }
+  }
 
   // Initialize activeTab from localStorage for this specific team
   const [activeTab, setActiveTab] = useState(() => {
     const stored = localStorage.getItem(`team-tab-${teamSlug}`)
-    return stored || 'contributions'
+    return stored || 'prs'
   })
 
   // Restore scroll position when returning to this page
@@ -116,19 +129,21 @@ export function TeamDetail() {
     if (members.length === 0) return
 
     // Create AbortController for this fetch cycle
-    const abortController = new AbortController()
+    const controller = new AbortController()
+    setAbortController(controller)
     let isCancelled = false
 
-    fetchMemberContributions(members, abortController)
+    fetchMemberContributions(members, controller)
 
     // Cleanup function to abort ongoing requests when period changes
     return () => {
       console.log('[TeamDetail] Aborting previous fetch cycle')
       isCancelled = true
-      abortController.abort()
+      controller.abort()
+      setAbortController(null)
     }
 
-    async function fetchMemberContributions(members, abortController) {
+    async function fetchMemberContributions(members, controller) {
       // Reset member stats and team PRs before fetching new period
       setMemberStats({})
       setTeamPRs([])
@@ -180,7 +195,7 @@ export function TeamDetail() {
 
               // Fetch PRs
               try {
-                const prsData = await api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+                const prsData = await api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`, { signal: controller.signal })
 
                 // Check if request was cancelled
                 if (isCancelled) return
@@ -244,7 +259,7 @@ export function TeamDetail() {
 
               // Fetch commits
               try {
-                const commitsData = await api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+                const commitsData = await api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`, { signal: controller.signal })
 
                 // Check if request was cancelled
                 if (isCancelled) return
@@ -294,7 +309,7 @@ export function TeamDetail() {
 
               // Fetch reviews
               try {
-                const reviewsData = await api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`, { signal: abortController.signal })
+                const reviewsData = await api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`, { signal: controller.signal })
 
                 // Check if request was cancelled
                 if (isCancelled) return
@@ -452,7 +467,7 @@ export function TeamDetail() {
       closed: {}
     }
 
-    teamPRs.forEach(pr => {
+    filteredTeamPRs.forEach(pr => {
       // Determine single status: Merged > Closed > Open
       let statusKey
       if (pr.mergedAt) {
@@ -488,7 +503,7 @@ export function TeamDetail() {
     })
 
     return result
-  }, [teamPRs])
+  }, [filteredTeamPRs])
 
   // Transform chunkStats into time-series chart data
   const timeSeriesChartData = useMemo(() => {
@@ -636,6 +651,7 @@ export function TeamDetail() {
   }
 
   const periodOptions = [
+    { value: '7days', label: '7 Days' },
     { value: '30days', label: '30 Days' },
     { value: '90days', label: '90 Days' },
     { value: '365days', label: '365 Days' },
@@ -647,35 +663,28 @@ export function TeamDetail() {
     return option ? option.label : '30 Days'
   }
 
-  // Helper function to determine if a period option should be disabled during loading
-  const isPeriodDisabled = (optionValue) => {
-    if (fetchProgress.total === 0 || fetchProgress.loaded >= fetchProgress.total) {
-      return false // Not loading, enable all
-    }
 
-    // Map period values to their relative sizes
-    const periodSizes = {
-      '30days': 1,
-      '90days': 2,
-      '365days': 3,
-      'all-time': 4
-    }
+  // Filter PRs based on period (client-side filtering for 7 days)
+  const filteredTeamPRs = useMemo(() => {
+    if (period !== '7days') return teamPRs
 
-    const currentSize = periodSizes[period] || 0
-    const optionSize = periodSizes[optionValue] || 0
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+    sevenDaysAgo.setHours(0, 0, 0, 0)
 
-    // Disable if option is smaller than or equal to current period
-    // (prevents wasteful API calls and disables current button during load)
-    return optionSize <= currentSize
-  }
+    return teamPRs.filter(pr => {
+      const prDate = new Date(pr.createdAt)
+      return prDate >= sevenDaysAgo
+    })
+  }, [teamPRs, period])
 
   // Calculate member count from team data
   const memberCount = team?.memberCount ?? team?.members?.length ?? 0
 
   const tabs = [
-    { id: 'contributions', label: 'Contributions' },
+    { id: 'prs', label: `PRs (${filteredTeamPRs.length})` },
     { id: 'members', label: `Members (${memberCount})` },
-    { id: 'prs', label: `PRs (${teamPRs.length})` }
+    { id: 'contributions', label: 'Contributions' }
   ]
 
   return (
@@ -690,17 +699,23 @@ export function TeamDetail() {
               className="progress-bar"
               style={{ width: `${(fetchProgress.loaded / fetchProgress.total) * 100}%` }}
             />
+            {abortController && (
+              <button
+                onClick={handleCancelRequests}
+                className="progress-cancel-icon"
+                title="Cancel all pending requests"
+              >
+                ✕
+              </button>
+            )}
           </div>
           <div className="progress-text">
             <span className="progress-main">
               {fetchProgress.loaded} of {fetchProgress.total} completed
               ({Math.round((fetchProgress.loaded / fetchProgress.total) * 100)}%)
+              {queueStats.active > 0 && <> • {queueStats.active} in progress</>}
+              {queueStats.queued > 0 && <> • {queueStats.queued} queued</>}
             </span>
-            {queueStats.total > 0 && (
-              <span className="progress-queue">
-                {' • '}{queueStats.active} active, {queueStats.queued} queued
-              </span>
-            )}
             {fetchProgress.errors > 0 && (
               <span className="error-count"> • {fetchProgress.errors} failed</span>
             )}
@@ -736,7 +751,6 @@ export function TeamDetail() {
                 key={option.value}
                 onClick={() => setPeriod(option.value)}
                 className={`day-button ${period === option.value ? 'day-button-active' : ''}`}
-                disabled={isPeriodDisabled(option.value)}
               >
                 {option.label}
               </button>
@@ -765,88 +779,6 @@ export function TeamDetail() {
         {/* Contributions Tab */}
         {activeTab === 'contributions' && (
           <>
-            {/* Time-Series Contributions Chart */}
-            {timeSeriesChartData.length > 0 && (
-              <div className="contributions-chart-section">
-                <div className="chart-header">
-                  <h3>Team Contributions Over Time</h3>
-                  <div className="chart-controls">
-                    <div className="chart-view-toggle">
-                      <button
-                        onClick={() => setIsStacked(!isStacked)}
-                        className={`toggle-button ${!isStacked ? 'toggle-button-active' : ''}`}
-                      >
-                        Grouped
-                      </button>
-                    </div>
-                    <div className="series-toggles">
-                      <label className="series-toggle">
-                        <input
-                          type="checkbox"
-                          checked={visibleSeries.prs}
-                          onChange={(e) => setVisibleSeries(prev => ({ ...prev, prs: e.target.checked }))}
-                        />
-                        <span className="series-label" style={{ color: '#0969da' }}>PRs</span>
-                      </label>
-                      <label className="series-toggle">
-                        <input
-                          type="checkbox"
-                          checked={visibleSeries.commits}
-                          onChange={(e) => setVisibleSeries(prev => ({ ...prev, commits: e.target.checked }))}
-                        />
-                        <span className="series-label" style={{ color: '#2da44e' }}>Commits</span>
-                      </label>
-                      <label className="series-toggle">
-                        <input
-                          type="checkbox"
-                          checked={visibleSeries.reviews}
-                          onChange={(e) => setVisibleSeries(prev => ({ ...prev, reviews: e.target.checked }))}
-                        />
-                        <span className="series-label" style={{ color: '#bf3989' }}>Reviews</span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-                <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={timeSeriesChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis
-                      dataKey="name"
-                      angle={-45}
-                      textAnchor="end"
-                      height={80}
-                      interval={timeSeriesInterval}
-                      style={{ fontSize: '0.75rem' }}
-                    />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    {visibleSeries.prs && (
-                      <Bar
-                        dataKey="PRs"
-                        fill="#0969da"
-                        stackId={isStacked ? 'stack' : undefined}
-                      />
-                    )}
-                    {visibleSeries.commits && (
-                      <Bar
-                        dataKey="Commits"
-                        fill="#2da44e"
-                        stackId={isStacked ? 'stack' : undefined}
-                      />
-                    )}
-                    {visibleSeries.reviews && (
-                      <Bar
-                        dataKey="Reviews"
-                        fill="#bf3989"
-                        stackId={isStacked ? 'stack' : undefined}
-                      />
-                    )}
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
             {/* Per-Member Contributions Chart */}
             {chartData.length > 0 && (
               <div className="contributions-chart-section">
@@ -898,6 +830,88 @@ export function TeamDetail() {
                       textAnchor="end"
                       height={100}
                       interval={memberChartInterval}
+                      style={{ fontSize: '0.75rem' }}
+                    />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    {visibleSeries.prs && (
+                      <Bar
+                        dataKey="PRs"
+                        fill="#0969da"
+                        stackId={isStacked ? 'stack' : undefined}
+                      />
+                    )}
+                    {visibleSeries.commits && (
+                      <Bar
+                        dataKey="Commits"
+                        fill="#2da44e"
+                        stackId={isStacked ? 'stack' : undefined}
+                      />
+                    )}
+                    {visibleSeries.reviews && (
+                      <Bar
+                        dataKey="Reviews"
+                        fill="#bf3989"
+                        stackId={isStacked ? 'stack' : undefined}
+                      />
+                    )}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Time-Series Contributions Chart */}
+            {timeSeriesChartData.length > 0 && (
+              <div className="contributions-chart-section">
+                <div className="chart-header">
+                  <h3>Team Contributions Over Time</h3>
+                  <div className="chart-controls">
+                    <div className="chart-view-toggle">
+                      <button
+                        onClick={() => setIsStacked(!isStacked)}
+                        className={`toggle-button ${!isStacked ? 'toggle-button-active' : ''}`}
+                      >
+                        Grouped
+                      </button>
+                    </div>
+                    <div className="series-toggles">
+                      <label className="series-toggle">
+                        <input
+                          type="checkbox"
+                          checked={visibleSeries.prs}
+                          onChange={(e) => setVisibleSeries(prev => ({ ...prev, prs: e.target.checked }))}
+                        />
+                        <span className="series-label" style={{ color: '#0969da' }}>PRs</span>
+                      </label>
+                      <label className="series-toggle">
+                        <input
+                          type="checkbox"
+                          checked={visibleSeries.commits}
+                          onChange={(e) => setVisibleSeries(prev => ({ ...prev, commits: e.target.checked }))}
+                        />
+                        <span className="series-label" style={{ color: '#2da44e' }}>Commits</span>
+                      </label>
+                      <label className="series-toggle">
+                        <input
+                          type="checkbox"
+                          checked={visibleSeries.reviews}
+                          onChange={(e) => setVisibleSeries(prev => ({ ...prev, reviews: e.target.checked }))}
+                        />
+                        <span className="series-label" style={{ color: '#bf3989' }}>Reviews</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <ResponsiveContainer width="100%" height={400}>
+                  <BarChart data={timeSeriesChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="name"
+                      angle={-45}
+                      textAnchor="end"
+                      height={80}
+                      interval={timeSeriesInterval}
                       style={{ fontSize: '0.75rem' }}
                     />
                     <YAxis />
@@ -1003,9 +1017,9 @@ export function TeamDetail() {
         )}
 
         {/* PRs Tab */}
-        {activeTab === 'prs' && teamPRs.length > 0 && (
+        {activeTab === 'prs' && filteredTeamPRs.length > 0 && (
           <div className="team-prs-section">
-            <h3>Team Pull Requests ({teamPRs.length})</h3>
+            <h3>Team Pull Requests ({filteredTeamPRs.length})</h3>
 
             {/* Open PRs */}
             {groupedTeamPRs.open.length > 0 && (
