@@ -16,6 +16,7 @@ export function TeamDetail() {
   const [error, setError] = useState(null)
   const [memberStats, setMemberStats] = useState({}) // { username: { prs: N, commits: N, reviews: N, total: N, loading: bool } }
   const [fetchProgress, setFetchProgress] = useState({ loaded: 0, total: 0, errors: 0 })
+  const [queueStats, setQueueStats] = useState({ active: 0, queued: 0, total: 0 })
 
   // Initialize period from localStorage for this specific team
   const [period, setPeriod] = useState(() => {
@@ -49,6 +50,15 @@ export function TeamDetail() {
   useEffect(() => {
     localStorage.setItem(`team-tab-${teamSlug}`, activeTab)
   }, [teamSlug, activeTab])
+
+  useEffect(() => {
+    // Subscribe to global queue stats
+    const unsubscribe = api.onStatsChange((newStats) => {
+      setQueueStats(newStats)
+    })
+
+    return unsubscribe
+  }, [])
 
   useEffect(() => {
     const fetchTeam = async () => {
@@ -682,9 +692,18 @@ export function TeamDetail() {
             />
           </div>
           <div className="progress-text">
-            Loading contributions: {fetchProgress.loaded} of {fetchProgress.total} requests completed
-            ({Math.round((fetchProgress.loaded / fetchProgress.total) * 100)}%)
-            {fetchProgress.errors > 0 && <span className="error-count"> • {fetchProgress.errors} failed</span>}
+            <span className="progress-main">
+              {fetchProgress.loaded} of {fetchProgress.total} completed
+              ({Math.round((fetchProgress.loaded / fetchProgress.total) * 100)}%)
+            </span>
+            {queueStats.total > 0 && (
+              <span className="progress-queue">
+                {' • '}{queueStats.active} active, {queueStats.queued} queued
+              </span>
+            )}
+            {fetchProgress.errors > 0 && (
+              <span className="error-count"> • {fetchProgress.errors} failed</span>
+            )}
           </div>
         </div>
       )}

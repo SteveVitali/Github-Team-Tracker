@@ -30,6 +30,7 @@ export function UserDetail() {
   })
 
   const [fetchProgress, setFetchProgress] = useState({ loaded: 0, total: 0, errors: 0 })
+  const [queueStats, setQueueStats] = useState({ active: 0, queued: 0, total: 0 })
   const [refreshingLatest, setRefreshingLatest] = useState(false)
   const [chunkStats, setChunkStats] = useState({}) // { 'YYYY-MM-DD': { prs: N, commits: N, reviews: N } }
   const [isStacked, setIsStacked] = useState(true)
@@ -44,6 +45,15 @@ export function UserDetail() {
   useEffect(() => {
     localStorage.setItem(`user-tab-${username}`, activeTab)
   }, [username, activeTab])
+
+  useEffect(() => {
+    // Subscribe to global queue stats
+    const unsubscribe = api.onStatsChange((newStats) => {
+      setQueueStats(newStats)
+    })
+
+    return unsubscribe
+  }, [])
 
   useEffect(() => {
     // Create AbortController for this fetch cycle
@@ -774,9 +784,18 @@ export function UserDetail() {
             />
           </div>
           <div className="progress-text">
-            Loading: {fetchProgress.loaded} of {fetchProgress.total} requests completed
-            ({Math.round((fetchProgress.loaded / fetchProgress.total) * 100)}%)
-            {fetchProgress.errors > 0 && <span className="error-count"> • {fetchProgress.errors} failed</span>}
+            <span className="progress-main">
+              {fetchProgress.loaded} of {fetchProgress.total} completed
+              ({Math.round((fetchProgress.loaded / fetchProgress.total) * 100)}%)
+            </span>
+            {queueStats.total > 0 && (
+              <span className="progress-queue">
+                {' • '}{queueStats.active} active, {queueStats.queued} queued
+              </span>
+            )}
+            {fetchProgress.errors > 0 && (
+              <span className="error-count"> • {fetchProgress.errors} failed</span>
+            )}
           </div>
         </div>
       )}
