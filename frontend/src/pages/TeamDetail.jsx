@@ -108,7 +108,7 @@ export function TeamDetail() {
           total: 0,
           loading: true,
           loadedChunks: 0,
-          totalChunks: chunks.length * 3 // 3 endpoints per chunk
+          totalChunks: chunks.length // Count chunks, not endpoints
         }
       })
       setMemberStats(initialStats)
@@ -128,6 +128,7 @@ export function TeamDetail() {
           let userPrsCount = 0
           let userCommitsCount = 0
           let userReviewsCount = 0
+          let userLoadedChunks = 0 // Local counter for this user's chunks
 
           // Fetch all chunks for this user
           await Promise.all(
@@ -176,8 +177,7 @@ export function TeamDetail() {
                   [username]: {
                     ...prev[username],
                     prs: userPrsCount,
-                    total: userPrsCount + (prev[username]?.commits || 0) + (prev[username]?.reviews || 0),
-                    loadedChunks: (prev[username]?.loadedChunks || 0) + 1
+                    total: userPrsCount + (prev[username]?.commits || 0) + (prev[username]?.reviews || 0)
                   }
                 }))
               } catch (err) {
@@ -214,8 +214,7 @@ export function TeamDetail() {
                   [username]: {
                     ...prev[username],
                     commits: userCommitsCount,
-                    total: (prev[username]?.prs || 0) + userCommitsCount + (prev[username]?.reviews || 0),
-                    loadedChunks: (prev[username]?.loadedChunks || 0) + 1
+                    total: (prev[username]?.prs || 0) + userCommitsCount + (prev[username]?.reviews || 0)
                   }
                 }))
               } catch (err) {
@@ -246,6 +245,9 @@ export function TeamDetail() {
                 counter.value++
                 setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
 
+                // Increment local chunk counter (after all 3 endpoints for this chunk)
+                userLoadedChunks++
+
                 // Update stats progressively
                 setMemberStats(prev => ({
                   ...prev,
@@ -253,7 +255,7 @@ export function TeamDetail() {
                     ...prev[username],
                     reviews: userReviewsCount,
                     total: (prev[username]?.prs || 0) + (prev[username]?.commits || 0) + userReviewsCount,
-                    loadedChunks: (prev[username]?.loadedChunks || 0) + 1
+                    loadedChunks: userLoadedChunks
                   }
                 }))
               } catch (err) {
@@ -261,6 +263,15 @@ export function TeamDetail() {
                 counter.value++
                 counter.errors++
                 setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
+                // Still increment local chunk counter on error (chunk is done, even if it failed)
+                userLoadedChunks++
+                setMemberStats(prev => ({
+                  ...prev,
+                  [username]: {
+                    ...prev[username],
+                    loadedChunks: userLoadedChunks
+                  }
+                }))
               }
             })
           )
@@ -429,6 +440,19 @@ export function TeamDetail() {
       .sort((a, b) => b.Total - a.Total) // Sort by total descending
   }, [team, memberStats])
 
+  // Calculate dynamic intervals for chart x-axis labels to prevent cluttering
+  const timeSeriesInterval = useMemo(() => {
+    const dataLength = timeSeriesChartData.length
+    if (dataLength <= 12) return 0 // Show all labels for small datasets
+    return Math.max(0, Math.floor(dataLength / 12) - 1) // Show ~12 labels
+  }, [timeSeriesChartData])
+
+  const memberChartInterval = useMemo(() => {
+    const dataLength = chartData.length
+    if (dataLength <= 15) return 0 // Show all labels for small datasets
+    return Math.max(0, Math.floor(dataLength / 15) - 1) // Show ~15 labels
+  }, [chartData])
+
   // Sort members: completed first, then by total contributions (descending)
   const sortedMembers = team?.members ? [...team.members].sort((a, b) => {
     const usernameA = a.login || a.username || a.name || a
@@ -445,10 +469,6 @@ export function TeamDetail() {
     return statsB.total - statsA.total
   }) : []
 
-  if (loading) {
-    return <LoadingSpinner message="Loading team details..." />
-  }
-
   if (error) {
     return (
       <div className="team-detail-container">
@@ -456,6 +476,18 @@ export function TeamDetail() {
         <div className="error-container">
           <h3>Error loading team</h3>
           <p>{error}</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Don't block rendering while team loads - show placeholder
+  if (loading || !team) {
+    return (
+      <div className="team-detail-container">
+        <Link to="/" className="back-link">← Back to Teams</Link>
+        <div className="team-info">
+          <LoadingSpinner message="Loading team details..." />
         </div>
       </div>
     )
@@ -532,9 +564,12 @@ export function TeamDetail() {
     return option ? option.label : '30 Days'
   }
 
+  // Calculate member count from team data
+  const memberCount = team?.memberCount ?? team?.members?.length ?? 0
+
   const tabs = [
     { id: 'contributions', label: 'Contributions' },
-    { id: 'members', label: `Members (${team?.memberCount || 0})` },
+    { id: 'members', label: `Members (${memberCount})` },
     { id: 'prs', label: `PRs (${teamPRs.length})` }
   ]
 
@@ -666,7 +701,7 @@ export function TeamDetail() {
                       angle={-45}
                       textAnchor="end"
                       height={80}
-                      interval={0}
+                      interval={timeSeriesInterval}
                       style={{ fontSize: '0.75rem' }}
                     />
                     <YAxis />
@@ -748,7 +783,7 @@ export function TeamDetail() {
                       angle={-45}
                       textAnchor="end"
                       height={100}
-                      interval={0}
+                      interval={memberChartInterval}
                       style={{ fontSize: '0.75rem' }}
                     />
                     <YAxis />
@@ -814,7 +849,7 @@ export function TeamDetail() {
                         <div
                           className="member-progress-fill"
                           style={{
-                            width: `${(stats.loadedChunks / stats.totalChunks) * 100}%`
+                            width: `${stats.totalChunks > 0 ? (stats.loadedChunks / stats.totalChunks) * 100 : 0}%`
                           }}
                         />
                       </div>

@@ -470,6 +470,13 @@ export function UserDetail() {
       .sort((a, b) => a.name.localeCompare(b.name)) // Sort by date ascending (chronological)
   }, [chunkStats])
 
+  // Calculate dynamic interval for chart x-axis labels to prevent cluttering
+  const chartInterval = useMemo(() => {
+    const dataLength = chartData.length
+    if (dataLength <= 12) return 0 // Show all labels for small datasets
+    return Math.max(0, Math.floor(dataLength / 12) - 1) // Show ~12 labels
+  }, [chartData])
+
   if (error) {
     return (
       <div className="user-detail-container">
@@ -736,7 +743,7 @@ export function UserDetail() {
                 angle={-45}
                 textAnchor="end"
                 height={80}
-                interval={0}
+                interval={chartInterval}
                 style={{ fontSize: '0.75rem' }}
               />
               <YAxis />
