@@ -14,7 +14,7 @@ export function TeamDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [memberStats, setMemberStats] = useState({}) // { username: { prs: N, commits: N, reviews: N, total: N, loading: bool } }
-  const [fetchProgress, setFetchProgress] = useState({ loaded: 0, total: 0 })
+  const [fetchProgress, setFetchProgress] = useState({ loaded: 0, total: 0, errors: 0 })
   const [period, setPeriod] = useState('30days')
   const [refreshingLatest, setRefreshingLatest] = useState(false)
   const [teamPRs, setTeamPRs] = useState([]) // All PRs from all team members
@@ -54,7 +54,7 @@ export function TeamDetail() {
       setMemberStats({})
       setTeamPRs([])
       setChunkStats({})
-      setFetchProgress({ loaded: 0, total: 0 })
+      setFetchProgress({ loaded: 0, total: 0, errors: 0 })
 
       // Get date range for selected period
       const { from, to } = getDateRangeForPeriod(period)
@@ -78,10 +78,10 @@ export function TeamDetail() {
 
       // Total requests: members * chunks * 3 endpoints
       const totalRequests = members.length * chunks.length * 3
-      setFetchProgress({ loaded: 0, total: totalRequests })
+      setFetchProgress({ loaded: 0, total: totalRequests, errors: 0 })
 
       // Counter for progress tracking
-      const counter = { value: 0 }
+      const counter = { value: 0, errors: 0 }
 
       // Fetch stats for all members in parallel
       await Promise.all(
@@ -131,7 +131,7 @@ export function TeamDetail() {
                 }))
 
                 counter.value++
-                setFetchProgress({ loaded: counter.value, total: totalRequests })
+                setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
 
                 // Update stats progressively
                 setMemberStats(prev => ({
@@ -146,7 +146,8 @@ export function TeamDetail() {
               } catch (err) {
                 console.error(`Error fetching PRs for ${username}:`, err)
                 counter.value++
-                setFetchProgress({ loaded: counter.value, total: totalRequests })
+                counter.errors++
+                setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
               }
 
               // Fetch commits
@@ -168,7 +169,7 @@ export function TeamDetail() {
                 }))
 
                 counter.value++
-                setFetchProgress({ loaded: counter.value, total: totalRequests })
+                setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
 
                 // Update stats progressively
                 setMemberStats(prev => ({
@@ -183,7 +184,8 @@ export function TeamDetail() {
               } catch (err) {
                 console.error(`Error fetching commits for ${username}:`, err)
                 counter.value++
-                setFetchProgress({ loaded: counter.value, total: totalRequests })
+                counter.errors++
+                setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
               }
 
               // Fetch reviews
@@ -205,7 +207,7 @@ export function TeamDetail() {
                 }))
 
                 counter.value++
-                setFetchProgress({ loaded: counter.value, total: totalRequests })
+                setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
 
                 // Update stats progressively
                 setMemberStats(prev => ({
@@ -220,7 +222,8 @@ export function TeamDetail() {
               } catch (err) {
                 console.error(`Error fetching reviews for ${username}:`, err)
                 counter.value++
-                setFetchProgress({ loaded: counter.value, total: totalRequests })
+                counter.errors++
+                setFetchProgress({ loaded: counter.value, total: totalRequests, errors: counter.errors })
               }
             })
           )
@@ -258,9 +261,10 @@ export function TeamDetail() {
       const members = team.members
       const totalRequests = members.length * 3
       let completed = 0
+      let errors = 0
 
       // Show progress
-      setFetchProgress({ loaded: 0, total: totalRequests })
+      setFetchProgress({ loaded: 0, total: totalRequests, errors: 0 })
 
       // Fetch latest chunk for all members in parallel
       await Promise.all(
@@ -271,17 +275,17 @@ export function TeamDetail() {
             const [prsData, commitsData, reviewsData] = await Promise.all([
               api.get(`/contributions/user/${username}/prs?from=${fromStr}&to=${toStr}`, { bypassCache: true }).then(data => {
                 completed++
-                setFetchProgress({ loaded: completed, total: totalRequests })
+                setFetchProgress({ loaded: completed, total: totalRequests, errors })
                 return data
               }),
               api.get(`/contributions/user/${username}/commits?from=${fromStr}&to=${toStr}`, { bypassCache: true }).then(data => {
                 completed++
-                setFetchProgress({ loaded: completed, total: totalRequests })
+                setFetchProgress({ loaded: completed, total: totalRequests, errors })
                 return data
               }),
               api.get(`/contributions/user/${username}/reviews?from=${fromStr}&to=${toStr}`, { bypassCache: true }).then(data => {
                 completed++
-                setFetchProgress({ loaded: completed, total: totalRequests })
+                setFetchProgress({ loaded: completed, total: totalRequests, errors })
                 return data
               })
             ])
@@ -291,7 +295,8 @@ export function TeamDetail() {
             console.error(`[TeamDetail] Error refreshing latest chunk for ${username}:`, err)
             // Still increment progress on error
             completed += 3
-            setFetchProgress({ loaded: completed, total: totalRequests })
+            errors += 3
+            setFetchProgress({ loaded: completed, total: totalRequests, errors })
           }
         })
       )
@@ -303,7 +308,7 @@ export function TeamDetail() {
       setRefreshingLatest(false)
       // Clear progress after a brief delay
       setTimeout(() => {
-        setFetchProgress({ loaded: 0, total: 0 })
+        setFetchProgress({ loaded: 0, total: 0, errors: 0 })
       }, 500)
     }
   }
@@ -506,6 +511,7 @@ export function TeamDetail() {
           <div className="progress-text">
             Loading contributions: {fetchProgress.loaded} of {fetchProgress.total} requests completed
             ({Math.round((fetchProgress.loaded / fetchProgress.total) * 100)}%)
+            {fetchProgress.errors > 0 && <span className="error-count"> • {fetchProgress.errors} failed</span>}
           </div>
         </div>
       )}

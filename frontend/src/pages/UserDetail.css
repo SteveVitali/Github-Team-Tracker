@@ -301,6 +301,11 @@
   letter-spacing: 0.3px;
 }
 
+.fetch-progress-top .error-count {
+  color: #ffcccb;
+  font-weight: 700;
+}
+
 /* Old progress indicator (deprecated) */
 .fetch-progress {
   background: white;

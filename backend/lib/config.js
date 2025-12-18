@@ -28,7 +28,7 @@ export const config = {
   // API Configuration
   REQUEST_DELAY_MS: parseInt(process.env.REQUEST_DELAY_MS || '0'),
   MAX_RETRIES: parseInt(process.env.MAX_RETRIES || '16'),
-  INITIAL_BACKOFF_MS: parseInt(process.env.INITIAL_BACKOFF_MS || '1000'),
+  INITIAL_BACKOFF_MS: parseInt(process.env.INITIAL_BACKOFF_MS || '4000'),
   MAX_CONCURRENT_REQUESTS: parseInt(process.env.MAX_CONCURRENT_REQUESTS || '1'),
 
   // Database

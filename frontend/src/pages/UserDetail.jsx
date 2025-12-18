@@ -18,7 +18,7 @@ export function UserDetail() {
   const [error, setError] = useState(null)
   const [activeTab, setActiveTab] = useState('prs')
   const [period, setPeriod] = useState('30days')
-  const [fetchProgress, setFetchProgress] = useState({ loaded: 0, total: 0 })
+  const [fetchProgress, setFetchProgress] = useState({ loaded: 0, total: 0, errors: 0 })
   const [refreshingLatest, setRefreshingLatest] = useState(false)
   const [chunkStats, setChunkStats] = useState({}) // { 'YYYY-MM-DD': { prs: N, commits: N, reviews: N } }
   const [isStacked, setIsStacked] = useState(true)
@@ -63,7 +63,7 @@ export function UserDetail() {
           let consecutiveEmptyChunks = 0
           let processedChunks = 0
 
-          setFetchProgress({ loaded: 0, total: reversedChunks.length * 3 })
+          setFetchProgress({ loaded: 0, total: reversedChunks.length * 3, errors: 0 })
 
           for (const chunk of reversedChunks) {
             if (consecutiveEmptyChunks >= EMPTY_CHUNK_THRESHOLD) {
@@ -107,7 +107,7 @@ export function UserDetail() {
               })
             } catch (err) {
               console.error(`Error fetching PRs for ${fromStr} to ${toStr}:`, err)
-              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1, errors: prev.errors + 1 }))
             }
 
             try {
@@ -139,7 +139,7 @@ export function UserDetail() {
               })
             } catch (err) {
               console.error(`Error fetching commits for ${fromStr} to ${toStr}:`, err)
-              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1, errors: prev.errors + 1 }))
             }
 
             try {
@@ -171,7 +171,7 @@ export function UserDetail() {
               })
             } catch (err) {
               console.error(`Error fetching reviews for ${fromStr} to ${toStr}:`, err)
-              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1 }))
+              setFetchProgress(prev => ({ ...prev, loaded: prev.loaded + 1, errors: prev.errors + 1 }))
             }
 
             // Check if this chunk was empty
@@ -189,10 +189,10 @@ export function UserDetail() {
           console.log(`[UserDetail] All-time fetch complete: processed ${processedChunks}/${reversedChunks.length} chunks`)
         } else {
           // For non-all-time periods, fetch all chunks in parallel
-          setFetchProgress({ loaded: 0, total: chunks.length * 3 })
+          setFetchProgress({ loaded: 0, total: chunks.length * 3, errors: 0 })
 
           // Use a counter object to avoid race conditions
-          const counter = { value: 0 }
+          const counter = { value: 0, errors: 0 }
 
           // Process chunks in parallel
           await Promise.all(
@@ -210,7 +210,7 @@ export function UserDetail() {
               }
 
               counter.value++
-              setFetchProgress({ loaded: counter.value, total: chunks.length * 3 })
+              setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
 
               // Update chunk stats
               const chunkKey = fromStr
@@ -236,7 +236,8 @@ export function UserDetail() {
             } catch (err) {
               console.error(`Error fetching PRs for ${fromStr} to ${toStr}:`, err)
               counter.value++
-              setFetchProgress({ loaded: counter.value, total: chunks.length * 3 })
+              counter.errors++
+              setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
             }
 
             try {
@@ -249,7 +250,7 @@ export function UserDetail() {
               }
 
               counter.value++
-              setFetchProgress({ loaded: counter.value, total: chunks.length * 3 })
+              setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
 
               // Update chunk stats
               const chunkKey = fromStr
@@ -275,7 +276,8 @@ export function UserDetail() {
             } catch (err) {
               console.error(`Error fetching commits for ${fromStr} to ${toStr}:`, err)
               counter.value++
-              setFetchProgress({ loaded: counter.value, total: chunks.length * 3 })
+              counter.errors++
+              setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
             }
 
             try {
@@ -288,7 +290,7 @@ export function UserDetail() {
               }
 
               counter.value++
-              setFetchProgress({ loaded: counter.value, total: chunks.length * 3 })
+              setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
 
               // Update chunk stats
               const chunkKey = fromStr
@@ -314,7 +316,8 @@ export function UserDetail() {
             } catch (err) {
               console.error(`Error fetching reviews for ${fromStr} to ${toStr}:`, err)
               counter.value++
-              setFetchProgress({ loaded: counter.value, total: chunks.length * 3 })
+              counter.errors++
+              setFetchProgress({ loaded: counter.value, total: chunks.length * 3, errors: counter.errors })
             }
           })
         )
@@ -329,7 +332,7 @@ export function UserDetail() {
       setError(err.message)
     } finally {
       setLoading(false)
-      setFetchProgress({ loaded: 0, total: 0 })
+      setFetchProgress({ loaded: 0, total: 0, errors: 0 })
     }
   }
 
@@ -352,7 +355,7 @@ export function UserDetail() {
       console.log(`[UserDetail] Refreshing latest chunk: ${fromStr} to ${toStr}`)
 
       // Show progress
-      setFetchProgress({ loaded: 0, total: 3 })
+      setFetchProgress({ loaded: 0, total: 3, errors: 0 })
 
       // Fetch latest chunk data with cache bypass
       const [prsData, commitsData, reviewsData] = await Promise.all([
@@ -405,7 +408,7 @@ export function UserDetail() {
       setRefreshingLatest(false)
       // Clear progress after a brief delay
       setTimeout(() => {
-        setFetchProgress({ loaded: 0, total: 0 })
+        setFetchProgress({ loaded: 0, total: 0, errors: 0 })
       }, 500)
     }
   }
@@ -637,6 +640,7 @@ export function UserDetail() {
           <div className="progress-text">
             Loading: {fetchProgress.loaded} of {fetchProgress.total} requests completed
             ({Math.round((fetchProgress.loaded / fetchProgress.total) * 100)}%)
+            {fetchProgress.errors > 0 && <span className="error-count"> • {fetchProgress.errors} failed</span>}
           </div>
         </div>
       )}

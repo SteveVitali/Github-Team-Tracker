@@ -250,6 +250,11 @@
   letter-spacing: 0.3px;
 }
 
+.fetch-progress-top .error-count {
+  color: #ffcccb;
+  font-weight: 700;
+}
+
 /* Member card with stats */
 .member-card {
   position: relative;
