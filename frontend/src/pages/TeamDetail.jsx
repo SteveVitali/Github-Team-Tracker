@@ -703,34 +703,28 @@ export function TeamDetail() {
     const sortedPRs = [...prs].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
 
     return (
-      <div className="flat-pr-list">
+      <div className="team-prs-list">
         {sortedPRs.map((pr) => {
           const prStatus = pr.mergedAt ? 'merged' : pr.state?.toLowerCase()
           const prStatusLabel = pr.mergedAt ? 'Merged' : pr.state
 
           return (
-            <div key={pr.id} className="item-card">
-              <div className="item-header">
-                <a href={pr.url} target="_blank" rel="noopener noreferrer" className="item-title">
-                  {pr.title}
-                </a>
-                <span className={`status-badge status-${prStatus}`}>
-                  {prStatusLabel}
-                </span>
-              </div>
-              <div className="item-meta">
-                <span className="meta-item repo-name-inline">{pr.repository}</span>
-                <Link
-                  to={`/user/${pr.author}`}
-                  state={{ from: `/team/${teamSlug}` }}
-                  className="meta-item user-link"
-                >
-                  @{pr.author}
-                </Link>
-                <span className="meta-item">#{pr.number}</span>
-                <span className="meta-item">{new Date(pr.createdAt).toLocaleDateString()}</span>
-                {pr.draft && <span className="meta-badge draft">Draft</span>}
-              </div>
+            <div key={pr.id} className="team-pr-card">
+              <span className="pr-repo">{pr.repository}</span>
+              <Link
+                to={`/user/${pr.author}`}
+                state={{ from: `/team/${teamSlug}` }}
+                className="pr-author"
+              >
+                @{pr.author}
+              </Link>
+              <a href={pr.url} target="_blank" rel="noopener noreferrer" className="pr-title">
+                {pr.title}
+              </a>
+              <span className={`status-badge status-${prStatus}`}>{prStatusLabel}</span>
+              {pr.draft && <span className="meta-badge draft">Draft</span>}
+              <span className="pr-number">#{pr.number}</span>
+              <span className="pr-date">{new Date(pr.createdAt).toLocaleDateString()}</span>
             </div>
           )
         })}
@@ -776,33 +770,27 @@ export function TeamDetail() {
               </button>
 
               {isExpanded && (
-                <div className="repo-items">
+                <div className="team-prs-list">
                   {repoPrs.map((pr) => {
                     const prStatus = pr.mergedAt ? 'merged' : pr.state?.toLowerCase()
                     const prStatusLabel = pr.mergedAt ? 'Merged' : pr.state
 
                     return (
-                      <div key={pr.id} className="item-card">
-                        <div className="item-header">
-                          <a href={pr.url} target="_blank" rel="noopener noreferrer" className="item-title">
-                            {pr.title}
-                          </a>
-                          <span className={`status-badge status-${prStatus}`}>
-                            {prStatusLabel}
-                          </span>
-                        </div>
-                        <div className="item-meta">
-                          <Link
-                            to={`/user/${pr.author}`}
-                            state={{ from: `/team/${teamSlug}` }}
-                            className="meta-item user-link"
-                          >
-                            @{pr.author}
-                          </Link>
-                          <span className="meta-item">#{pr.number}</span>
-                          <span className="meta-item">{new Date(pr.createdAt).toLocaleDateString()}</span>
-                          {pr.draft && <span className="meta-badge draft">Draft</span>}
-                        </div>
+                      <div key={pr.id} className="team-pr-card">
+                        <Link
+                          to={`/user/${pr.author}`}
+                          state={{ from: `/team/${teamSlug}` }}
+                          className="pr-author"
+                        >
+                          @{pr.author}
+                        </Link>
+                        <a href={pr.url} target="_blank" rel="noopener noreferrer" className="pr-title">
+                          {pr.title}
+                        </a>
+                        <span className={`status-badge status-${prStatus}`}>{prStatusLabel}</span>
+                        {pr.draft && <span className="meta-badge draft">Draft</span>}
+                        <span className="pr-number">#{pr.number}</span>
+                        <span className="pr-date">{new Date(pr.createdAt).toLocaleDateString()}</span>
                       </div>
                     )
                   })}

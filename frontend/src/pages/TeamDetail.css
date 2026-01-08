@@ -581,6 +581,46 @@
   flex-wrap: wrap;
 }
 
+/* Segmented Control */
+.segmented-control {
+  display: inline-flex;
+  background: #f6f8fa;
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.segment {
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #586069;
+  font-weight: 500;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  white-space: nowrap;
+  position: relative;
+}
+
+.segment:hover {
+  color: #24292e;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.segment-active {
+  background: white;
+  color: #0969da;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.segment-active:hover {
+  background: white;
+  color: #0969da;
+}
+
 /* PR status filters */
 .pr-status-filters {
   display: flex;
@@ -1055,25 +1095,8 @@
   transform: rotate(0deg);
 }
 
-.repo-items {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 1rem;
+.repo-section .team-prs-list {
   border-top: 1px solid #d0d7de;
-}
-
-.repo-items .item-card {
-  margin: 0;
-  padding: 1.25rem;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
-  transition: all 0.2s;
-}
-
-.repo-items .item-card:hover {
-  border-color: #0969da;
-  box-shadow: 0 2px 8px rgba(9, 105, 218, 0.1);
 }
 
 .item-header {
@@ -1145,6 +1168,34 @@
 .meta-badge.draft {
   background-color: #f6f8fa;
   color: #586069;
+}
+
+/* Flat PR list (no grouping) */
+.flat-pr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.flat-pr-list .item-card {
+  background: white;
+  padding: 1.25rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.flat-pr-list .item-card:hover {
+  border-color: #0969da;
+  box-shadow: 0 2px 8px rgba(9, 105, 218, 0.1);
+}
+
+.repo-name-inline {
+  font-weight: 600;
+  color: #24292e;
+  background-color: #f6f8fa;
+  padding: 0.25rem 0.625rem;
+  border-radius: 4px;
 }
 
 /* PR Status Filters Bar - matching UserDetail */
