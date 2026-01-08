@@ -600,12 +600,17 @@
   font-family: inherit;
 }
 
-.tab:hover {
+.tab:hover:not(.tab-active) {
   color: #24292e;
   border-bottom-color: #d0d7de;
 }
 
 .tab-active {
+  color: #0969da;
+  border-bottom-color: #0969da;
+}
+
+.tab-active:hover {
   color: #0969da;
   border-bottom-color: #0969da;
 }
