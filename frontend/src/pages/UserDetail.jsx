@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api'
 import { indexedDBCache } from '../indexeddb-cache'
 import { LoadingSpinner } from '../components/LoadingSpinner'
@@ -9,6 +9,8 @@ import './UserDetail.css'
 
 export function UserDetail() {
   const { username } = useParams()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [userInfo, setUserInfo] = useState({ username, name: username })
   const [prs, setPrs] = useState({ prs: [], count: 0 })
   const [commits, setCommits] = useState({ commits: [], count: 0 })
@@ -35,6 +37,57 @@ export function UserDetail() {
   const [chunkStats, setChunkStats] = useState({}) // { 'YYYY-MM-DD': { prs: N, commits: N, reviews: N } }
   const [isStacked, setIsStacked] = useState(true)
   const [visibleSeries, setVisibleSeries] = useState({ prs: true, commits: true, reviews: true })
+
+  // Determine smart back navigation
+  const getBackNavigation = () => {
+    // Check if we came from another page in our app (has state or referrer)
+    const hasNavigationHistory = window.history.length > 1
+    const referrer = document.referrer
+    const fromTeam = location.state?.from?.includes('/team/')
+    const fromHome = location.state?.from === '/'
+
+    // If we have state telling us where we came from
+    if (fromTeam) {
+      const teamSlug = location.state.from.split('/team/')[1]
+      return {
+        text: `← Back to ${teamSlug}`,
+        handler: () => navigate(-1)
+      }
+    }
+
+    if (fromHome) {
+      return {
+        text: '← Back to Home',
+        handler: () => navigate(-1)
+      }
+    }
+
+    // If we have navigation history but no state, check referrer
+    if (hasNavigationHistory && referrer) {
+      const referrerUrl = new URL(referrer)
+      if (referrerUrl.pathname.startsWith('/team/')) {
+        const teamSlug = referrerUrl.pathname.split('/team/')[1]
+        return {
+          text: `← Back to ${teamSlug}`,
+          handler: () => navigate(-1)
+        }
+      }
+      if (referrerUrl.pathname === '/') {
+        return {
+          text: '← Back to Home',
+          handler: () => navigate(-1)
+        }
+      }
+    }
+
+    // Default fallback
+    return {
+      text: '← Back to Teams',
+      handler: () => navigate('/')
+    }
+  }
+
+  const backNav = getBackNavigation()
 
   // Handler to cancel ongoing requests
   const handleCancelRequests = () => {
@@ -625,7 +678,7 @@ export function UserDetail() {
   if (error) {
     return (
       <div className="user-detail-container">
-        <Link to="/" className="back-link">← Back to Teams</Link>
+        <button onClick={backNav.handler} className="back-link back-button">{backNav.text}</button>
         <div className="error-container">
           <h3>Error loading user stats</h3>
           <p>{error}</p>
@@ -820,7 +873,7 @@ export function UserDetail() {
 
   return (
     <div className="user-detail-container">
-      <Link to="/" className="back-link">← Back to Teams</Link>
+      <button onClick={backNav.handler} className="back-link back-button">{backNav.text}</button>
 
       {/* Progress bar at the top */}
       {fetchProgress.total > 0 && (

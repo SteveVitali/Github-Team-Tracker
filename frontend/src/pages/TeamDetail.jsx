@@ -995,6 +995,7 @@ export function TeamDetail() {
                   <Link
                     key={index}
                     to={`/user/${username}`}
+                    state={{ from: `/team/${teamSlug}` }}
                     className={`member-card ${stats.loading ? 'member-card-loading' : ''}`}
                   >
                     <div className="member-avatar">
@@ -1081,7 +1082,7 @@ export function TeamDetail() {
                             onClick={() => toggleUserSection('open', author)}
                           >
                             <div className="user-pr-header-content">
-                              <Link to={`/user/${author}`} className="user-pr-author" onClick={(e) => e.stopPropagation()}>
+                              <Link to={`/user/${author}`} state={{ from: `/team/${teamSlug}` }} className="user-pr-author" onClick={(e) => e.stopPropagation()}>
                                 @{author}
                               </Link>
                               <span className="user-pr-count">{prs.length}</span>
@@ -1136,7 +1137,7 @@ export function TeamDetail() {
                             onClick={() => toggleUserSection('merged', author)}
                           >
                             <div className="user-pr-header-content">
-                              <Link to={`/user/${author}`} className="user-pr-author" onClick={(e) => e.stopPropagation()}>
+                              <Link to={`/user/${author}`} state={{ from: `/team/${teamSlug}` }} className="user-pr-author" onClick={(e) => e.stopPropagation()}>
                                 @{author}
                               </Link>
                               <span className="user-pr-count">{prs.length}</span>
@@ -1190,7 +1191,7 @@ export function TeamDetail() {
                             onClick={() => toggleUserSection('closed', author)}
                           >
                             <div className="user-pr-header-content">
-                              <Link to={`/user/${author}`} className="user-pr-author" onClick={(e) => e.stopPropagation()}>
+                              <Link to={`/user/${author}`} state={{ from: `/team/${teamSlug}` }} className="user-pr-author" onClick={(e) => e.stopPropagation()}>
                                 @{author}
                               </Link>
                               <span className="user-pr-count">{prs.length}</span>

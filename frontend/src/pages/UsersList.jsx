@@ -89,6 +89,7 @@ export function UsersList({ onCountChange, bypassCache = false }) {
               <Link
                 key={username}
                 to={`/user/${username}`}
+                state={{ from: '/' }}
                 className="user-card"
               >
                 <div className="user-card-content">
