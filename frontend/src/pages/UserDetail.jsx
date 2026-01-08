@@ -746,20 +746,23 @@ export function UserDetail() {
                 <div className="repo-items">
                   {repoItems.map((item) => {
                     if (type === 'pr') {
+                      // Determine the actual status: if mergedAt exists, it's merged, not just closed
+                      const prStatus = item.mergedAt ? 'merged' : item.state.toLowerCase()
+                      const prStatusLabel = item.mergedAt ? 'Merged' : item.state
+
                       return (
                         <div key={item.id} className="item-card">
                           <div className="item-header">
                             <a href={item.url} target="_blank" rel="noopener noreferrer" className="item-title">
                               {item.title}
                             </a>
-                            <span className={`status-badge status-${item.state.toLowerCase()}`}>
-                              {item.state}
+                            <span className={`status-badge status-${prStatus}`}>
+                              {prStatusLabel}
                             </span>
                           </div>
                           <div className="item-meta">
                             <span className="meta-item">#{item.number}</span>
                             <span className="meta-item">{new Date(item.createdAt).toLocaleDateString()}</span>
-                            {item.mergedAt && <span className="meta-badge merged">Merged</span>}
                             {item.draft && <span className="meta-badge draft">Draft</span>}
                           </div>
                         </div>
@@ -779,14 +782,18 @@ export function UserDetail() {
                         </div>
                       )
                     } else if (type === 'review') {
+                      // Determine the actual status: if mergedAt exists, it's merged, not just closed
+                      const reviewStatus = item.mergedAt ? 'merged' : item.state.toLowerCase()
+                      const reviewStatusLabel = item.mergedAt ? 'Merged' : item.state
+
                       return (
                         <div key={item.id} className="item-card">
                           <div className="item-header">
                             <a href={item.url} target="_blank" rel="noopener noreferrer" className="item-title">
                               {item.title}
                             </a>
-                            <span className={`status-badge status-${item.state.toLowerCase()}`}>
-                              {item.state}
+                            <span className={`status-badge status-${reviewStatus}`}>
+                              {reviewStatusLabel}
                             </span>
                           </div>
                           <div className="item-meta">

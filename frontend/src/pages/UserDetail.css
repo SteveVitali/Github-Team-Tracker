@@ -625,6 +625,11 @@
   color: #cf222e;
 }
 
+.status-merged {
+  background-color: #ddf4ff;
+  color: #0969da;
+}
+
 .item-meta {
   display: flex;
   flex-wrap: wrap;
