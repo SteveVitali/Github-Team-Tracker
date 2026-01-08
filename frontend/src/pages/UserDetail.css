@@ -575,7 +575,6 @@
 /* Tabs */
 .tabs-container {
   display: flex;
-  justify-content: space-between;
   align-items: flex-end;
   gap: 1.5rem;
   border-bottom: 2px solid #d0d7de;
@@ -593,8 +592,6 @@
 .tabs {
   display: flex;
   gap: 0.5rem;
-  flex: 1;
-  min-width: 0;
   flex-wrap: wrap;
 }
 
