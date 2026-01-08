@@ -643,7 +643,7 @@ export function UserDetail() {
   ]
 
   // Filter data based on period (client-side filtering for 7 days)
-  const filterByPeriod = (items, dateField) => {
+  const filterByPeriod = (items, dateFieldOrGetter) => {
     if (period !== '7days') return items
 
     const sevenDaysAgo = new Date()
@@ -651,7 +651,11 @@ export function UserDetail() {
     sevenDaysAgo.setHours(0, 0, 0, 0)
 
     return items.filter(item => {
-      const itemDate = new Date(item[dateField])
+      // Handle both string field names and getter functions
+      const dateValue = typeof dateFieldOrGetter === 'function'
+        ? dateFieldOrGetter(item)
+        : item[dateFieldOrGetter]
+      const itemDate = new Date(dateValue)
       return itemDate >= sevenDaysAgo
     })
   }
@@ -663,8 +667,8 @@ export function UserDetail() {
   }), [prs, period])
 
   const filteredCommits = useMemo(() => ({
-    commits: filterByPeriod(commits.commits || [], 'author.date'),
-    count: filterByPeriod(commits.commits || [], 'author.date').length
+    commits: filterByPeriod(commits.commits || [], (commit) => commit.author?.date),
+    count: filterByPeriod(commits.commits || [], (commit) => commit.author?.date).length
   }), [commits, period])
 
   const filteredReviews = useMemo(() => ({
