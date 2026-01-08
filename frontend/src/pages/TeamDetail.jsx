@@ -39,10 +39,10 @@ export function TeamDetail() {
     return stored ? JSON.parse(stored) : { open: true, merged: true, closed: false }
   })
 
-  // Repository grouping toggle
-  const [useRepoGrouping, setUseRepoGrouping] = useState(() => {
-    const stored = localStorage.getItem(`team-grouping-${teamSlug}`)
-    return stored !== null ? stored === 'true' : true // Default to true (grouped by user)
+  // Grouping mode: 'user' | 'repo' | 'none'
+  const [groupingMode, setGroupingMode] = useState(() => {
+    const stored = localStorage.getItem(`team-grouping-mode-${teamSlug}`)
+    return stored || 'user' // Default to grouped by user
   })
 
   const [expandedRepos, setExpandedRepos] = useState({})
@@ -83,10 +83,10 @@ export function TeamDetail() {
     localStorage.setItem(`team-pr-filters-${teamSlug}`, JSON.stringify(prStatusFilters))
   }, [teamSlug, prStatusFilters])
 
-  // Save grouping preference to localStorage
+  // Save grouping mode to localStorage
   useEffect(() => {
-    localStorage.setItem(`team-grouping-${teamSlug}`, useRepoGrouping.toString())
-  }, [teamSlug, useRepoGrouping])
+    localStorage.setItem(`team-grouping-mode-${teamSlug}`, groupingMode)
+  }, [teamSlug, groupingMode])
 
   useEffect(() => {
     // Subscribe to global queue stats
@@ -514,7 +514,29 @@ export function TeamDetail() {
     return filtered
   }, [teamPRs, period, prStatusFilters])
 
-  // Group and sort team PRs by status, then by user (must be before early returns)
+  // Group PRs by user (all statuses together)
+  const userGroupedPRs = useMemo(() => {
+    const groups = {}
+
+    filteredTeamPRs.forEach(pr => {
+      const author = pr.author
+      if (!groups[author]) {
+        groups[author] = []
+      }
+      groups[author].push(pr)
+    })
+
+    // Sort PRs within each user group by date (newest first)
+    Object.keys(groups).forEach(author => {
+      groups[author].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    })
+
+    // Convert to array and sort by PR count descending
+    return Object.entries(groups)
+      .sort((a, b) => b[1].length - a[1].length)
+  }, [filteredTeamPRs])
+
+  // Group and sort team PRs by status, then by user (for status-based grouping)
   const groupedTeamPRs = useMemo(() => {
     const groups = {
       open: {},
@@ -673,6 +695,47 @@ export function TeamDetail() {
       ...prev,
       [key]: !prev[key]
     }))
+  }
+
+  // Component for flat chronological list (no grouping)
+  function FlatChronologicalList({ prs }) {
+    // Sort PRs by date (newest first)
+    const sortedPRs = [...prs].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+
+    return (
+      <div className="flat-pr-list">
+        {sortedPRs.map((pr) => {
+          const prStatus = pr.mergedAt ? 'merged' : pr.state?.toLowerCase()
+          const prStatusLabel = pr.mergedAt ? 'Merged' : pr.state
+
+          return (
+            <div key={pr.id} className="item-card">
+              <div className="item-header">
+                <a href={pr.url} target="_blank" rel="noopener noreferrer" className="item-title">
+                  {pr.title}
+                </a>
+                <span className={`status-badge status-${prStatus}`}>
+                  {prStatusLabel}
+                </span>
+              </div>
+              <div className="item-meta">
+                <span className="meta-item repo-name-inline">{pr.repository}</span>
+                <Link
+                  to={`/user/${pr.author}`}
+                  state={{ from: `/team/${teamSlug}` }}
+                  className="meta-item user-link"
+                >
+                  @{pr.author}
+                </Link>
+                <span className="meta-item">#{pr.number}</span>
+                <span className="meta-item">{new Date(pr.createdAt).toLocaleDateString()}</span>
+                {pr.draft && <span className="meta-badge draft">Draft</span>}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
   }
 
   // Component for chronological list of PRs (grouped by repo, not user)
@@ -1177,17 +1240,30 @@ export function TeamDetail() {
             <div className="prs-header-with-controls">
               <h3>Team Pull Requests ({filteredTeamPRs.length})</h3>
               <div className="prs-controls">
-                {/* Grouping Toggle */}
-                <label className="view-toggle-control">
-                  <span className="toggle-label">Group by {useRepoGrouping ? 'user' : 'repo'}</span>
-                  <input
-                    type="checkbox"
-                    checked={useRepoGrouping}
-                    onChange={(e) => setUseRepoGrouping(e.target.checked)}
-                    className="toggle-checkbox"
-                  />
-                  <span className="toggle-slider"></span>
-                </label>
+                {/* Grouping Mode Segmented Control */}
+                <div className="segmented-control">
+                  <button
+                    className={`segment ${groupingMode === 'user' ? 'segment-active' : ''}`}
+                    onClick={() => setGroupingMode('user')}
+                    title="Group by user"
+                  >
+                    By User
+                  </button>
+                  <button
+                    className={`segment ${groupingMode === 'repo' ? 'segment-active' : ''}`}
+                    onClick={() => setGroupingMode('repo')}
+                    title="Group by repository"
+                  >
+                    By Repo
+                  </button>
+                  <button
+                    className={`segment ${groupingMode === 'none' ? 'segment-active' : ''}`}
+                    onClick={() => setGroupingMode('none')}
+                    title="Flat chronological list"
+                  >
+                    Chronological
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1239,176 +1315,57 @@ export function TeamDetail() {
 
             {filteredTeamPRs.length === 0 ? (
               <div className="empty-state">No pull requests match the selected filters</div>
-            ) : useRepoGrouping ? (
-              // Original grouped by user view
-              <>
-
-            {/* Open PRs */}
-            {groupedTeamPRs.open.length > 0 && (
-              <div className="pr-status-group">
-                <button
-                  className="pr-group-header"
-                  onClick={() => toggleSection('open')}
-                >
-                  <span className="pr-group-title">
-                    Open ({groupedTeamPRs.open.reduce((sum, [_, prs]) => sum + prs.length, 0)})
-                  </span>
-                  <span className={`expand-icon ${collapsedSections.open ? '' : 'expanded'}`}>▼</span>
-                </button>
-                {!collapsedSections.open && (
-                  <div className="user-grouped-prs">
-                    {groupedTeamPRs.open.map(([author, prs]) => {
-                      const userKey = `open-${author}`
-                      const isExpanded = !collapsedUsers[userKey]
-                      return (
-                        <div key={author} className="user-pr-group">
-                          <button
-                            className="user-pr-header"
-                            onClick={() => toggleUserSection('open', author)}
-                          >
-                            <div className="user-pr-header-content">
-                              <Link to={`/user/${author}`} state={{ from: `/team/${teamSlug}` }} className="user-pr-author" onClick={(e) => e.stopPropagation()}>
-                                @{author}
-                              </Link>
-                              <span className="user-pr-count">{prs.length}</span>
-                            </div>
-                            <span className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>▼</span>
-                          </button>
-                          {isExpanded && (
-                            <div className="team-prs-list">
-                              {prs.map((pr) => (
-                                <div key={pr.id} className="team-pr-card">
-                                  <span className="pr-repo">{pr.repository}</span>
-                                  <a href={pr.url} target="_blank" rel="noopener noreferrer" className="pr-title">
-                                    {pr.title}
-                                  </a>
-                                  <span className="status-badge status-open">Open</span>
-                                  {pr.draft && <span className="meta-badge draft">Draft</span>}
-                                  <span className="pr-number">#{pr.number}</span>
-                                  <span className="pr-date">{new Date(pr.createdAt).toLocaleDateString()}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+            ) : groupingMode === 'user' ? (
+              // Grouped by user view - all PRs per user
+              <div className="user-grouped-prs">
+                {userGroupedPRs.map(([author, prs]) => {
+                  const userKey = author
+                  const isExpanded = !collapsedUsers[userKey]
+                  return (
+                    <div key={author} className="user-pr-group">
+                      <button
+                        className="user-pr-header"
+                        onClick={() => toggleUserSection('', author)}
+                      >
+                        <div className="user-pr-header-content">
+                          <Link to={`/user/${author}`} state={{ from: `/team/${teamSlug}` }} className="user-pr-author" onClick={(e) => e.stopPropagation()}>
+                            @{author}
+                          </Link>
+                          <span className="user-pr-count">{prs.length}</span>
                         </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
+                        <span className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>▼</span>
+                      </button>
+                      {isExpanded && (
+                        <div className="team-prs-list">
+                          {prs.map((pr) => {
+                            const prStatus = pr.mergedAt ? 'merged' : pr.state?.toLowerCase()
+                            const prStatusLabel = pr.mergedAt ? 'Merged' : pr.state
 
-            {/* Merged PRs */}
-            {groupedTeamPRs.merged.length > 0 && (
-              <div className="pr-status-group">
-                <button
-                  className="pr-group-header"
-                  onClick={() => toggleSection('merged')}
-                >
-                  <span className="pr-group-title">
-                    Merged ({groupedTeamPRs.merged.reduce((sum, [_, prs]) => sum + prs.length, 0)})
-                  </span>
-                  <span className={`expand-icon ${collapsedSections.merged ? '' : 'expanded'}`}>▼</span>
-                </button>
-                {!collapsedSections.merged && (
-                  <div className="user-grouped-prs">
-                    {groupedTeamPRs.merged.map(([author, prs]) => {
-                      const userKey = `merged-${author}`
-                      const isExpanded = !collapsedUsers[userKey]
-                      return (
-                        <div key={author} className="user-pr-group">
-                          <button
-                            className="user-pr-header"
-                            onClick={() => toggleUserSection('merged', author)}
-                          >
-                            <div className="user-pr-header-content">
-                              <Link to={`/user/${author}`} state={{ from: `/team/${teamSlug}` }} className="user-pr-author" onClick={(e) => e.stopPropagation()}>
-                                @{author}
-                              </Link>
-                              <span className="user-pr-count">{prs.length}</span>
-                            </div>
-                            <span className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>▼</span>
-                          </button>
-                          {isExpanded && (
-                            <div className="team-prs-list">
-                              {prs.map((pr) => (
-                                <div key={pr.id} className="team-pr-card">
-                                  <span className="pr-repo">{pr.repository}</span>
-                                  <a href={pr.url} target="_blank" rel="noopener noreferrer" className="pr-title">
-                                    {pr.title}
-                                  </a>
-                                  <span className="status-badge status-merged">Merged</span>
-                                  <span className="pr-number">#{pr.number}</span>
-                                  <span className="pr-date">{new Date(pr.createdAt).toLocaleDateString()}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                            return (
+                              <div key={pr.id} className="team-pr-card">
+                                <span className="pr-repo">{pr.repository}</span>
+                                <a href={pr.url} target="_blank" rel="noopener noreferrer" className="pr-title">
+                                  {pr.title}
+                                </a>
+                                <span className={`status-badge status-${prStatus}`}>{prStatusLabel}</span>
+                                {pr.draft && <span className="meta-badge draft">Draft</span>}
+                                <span className="pr-number">#{pr.number}</span>
+                                <span className="pr-date">{new Date(pr.createdAt).toLocaleDateString()}</span>
+                              </div>
+                            )
+                          })}
                         </div>
-                      )
-                    })}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  )
+                })}
               </div>
-            )}
-
-            {/* Closed PRs */}
-            {groupedTeamPRs.closed.length > 0 && (
-              <div className="pr-status-group">
-                <button
-                  className="pr-group-header"
-                  onClick={() => toggleSection('closed')}
-                >
-                  <span className="pr-group-title">
-                    Closed ({groupedTeamPRs.closed.reduce((sum, [_, prs]) => sum + prs.length, 0)})
-                  </span>
-                  <span className={`expand-icon ${collapsedSections.closed ? '' : 'expanded'}`}>▼</span>
-                </button>
-                {!collapsedSections.closed && (
-                  <div className="user-grouped-prs">
-                    {groupedTeamPRs.closed.map(([author, prs]) => {
-                      const userKey = `closed-${author}`
-                      const isExpanded = !collapsedUsers[userKey]
-                      return (
-                        <div key={author} className="user-pr-group">
-                          <button
-                            className="user-pr-header"
-                            onClick={() => toggleUserSection('closed', author)}
-                          >
-                            <div className="user-pr-header-content">
-                              <Link to={`/user/${author}`} state={{ from: `/team/${teamSlug}` }} className="user-pr-author" onClick={(e) => e.stopPropagation()}>
-                                @{author}
-                              </Link>
-                              <span className="user-pr-count">{prs.length}</span>
-                            </div>
-                            <span className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>▼</span>
-                          </button>
-                          {isExpanded && (
-                            <div className="team-prs-list">
-                              {prs.map((pr) => (
-                                <div key={pr.id} className="team-pr-card">
-                                  <span className="pr-repo">{pr.repository}</span>
-                                  <a href={pr.url} target="_blank" rel="noopener noreferrer" className="pr-title">
-                                    {pr.title}
-                                  </a>
-                                  <span className="status-badge status-closed">Closed</span>
-                                  <span className="pr-number">#{pr.number}</span>
-                                  <span className="pr-date">{new Date(pr.createdAt).toLocaleDateString()}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-              </>
-            ) : (
-              // Chronological view (grouped by repo)
+            ) : groupingMode === 'repo' ? (
+              // Grouped by repo view
               <ChronologicalPRList prs={filteredTeamPRs} />
+            ) : (
+              // Flat chronological view (no grouping)
+              <FlatChronologicalList prs={filteredTeamPRs} />
             )}
           </div>
         )}
