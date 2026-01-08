@@ -777,6 +777,7 @@ export function TeamDetail() {
 
                     return (
                       <div key={pr.id} className="team-pr-card">
+                        <span className="pr-repo">{repo}</span>
                         <Link
                           to={`/user/${pr.author}`}
                           state={{ from: `/team/${teamSlug}` }}
@@ -1332,6 +1333,13 @@ export function TeamDetail() {
                             return (
                               <div key={pr.id} className="team-pr-card">
                                 <span className="pr-repo">{pr.repository}</span>
+                                <Link
+                                  to={`/user/${author}`}
+                                  state={{ from: `/team/${teamSlug}` }}
+                                  className="pr-author"
+                                >
+                                  @{author}
+                                </Link>
                                 <a href={pr.url} target="_blank" rel="noopener noreferrer" className="pr-title">
                                   {pr.title}
                                 </a>
