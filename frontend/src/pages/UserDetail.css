@@ -576,14 +576,23 @@
 .tabs-container {
   display: flex;
   align-items: flex-end;
+  justify-content: space-between;
   border-bottom: 2px solid #d0d7de;
   margin-bottom: 1rem;
+  gap: 2rem;
 }
 
 .tabs {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.tabs-right-controls {
+  display: flex;
+  align-items: center;
+  margin-bottom: -2px;
+  padding-bottom: 0.875rem;
 }
 
 .tab {
@@ -910,31 +919,17 @@
   color: white;
 }
 
-/* View Controls Container */
-.view-controls-container {
+/* PR Status Filters Bar */
+.pr-status-filters-bar {
   background: white;
-  padding: 1rem 1.5rem;
+  padding: 0.875rem 1.5rem;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   margin-bottom: 1.5rem;
   display: flex;
   align-items: center;
-  gap: 2rem;
-  flex-wrap: wrap;
-}
-
-.view-controls-section {
-  display: flex;
-  align-items: center;
   gap: 1.5rem;
   flex-wrap: wrap;
-}
-
-.filters-divider {
-  width: 1px;
-  height: 32px;
-  background-color: #d0d7de;
-  flex-shrink: 0;
 }
 
 /* iOS-style toggle switch */
