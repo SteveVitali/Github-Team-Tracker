@@ -1305,21 +1305,19 @@ export function TeamDetail() {
               <div className="empty-state">No pull requests match the selected filters</div>
             ) : groupingMode === 'user' ? (
               // Grouped by user view - all PRs per user
-              <div className="user-grouped-prs">
+              <div className="repo-grouped-list">
                 {userGroupedPRs.map(([author, prs]) => {
                   const userKey = author
-                  const isExpanded = !collapsedUsers[userKey]
+                  const isExpanded = expandedRepos[author] ?? true // Default to expanded
                   return (
-                    <div key={author} className="user-pr-group">
+                    <div key={author} className="repo-section">
                       <button
-                        className="user-pr-header"
-                        onClick={() => toggleUserSection('', author)}
+                        className="repo-header"
+                        onClick={() => setExpandedRepos(prev => ({ ...prev, [author]: !prev[author] }))}
                       >
-                        <div className="user-pr-header-content">
-                          <Link to={`/user/${author}`} state={{ from: `/team/${teamSlug}` }} className="user-pr-author" onClick={(e) => e.stopPropagation()}>
-                            @{author}
-                          </Link>
-                          <span className="user-pr-count">{prs.length}</span>
+                        <div className="repo-header-content">
+                          <span className="repo-name">@{author}</span>
+                          <span className="repo-count">{prs.length}</span>
                         </div>
                         <span className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>▼</span>
                       </button>
