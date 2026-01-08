@@ -986,6 +986,121 @@
   background-color: #0550ae;
 }
 
+/* PR Status Filters */
+.pr-filters-container {
+  background: white;
+  padding: 1rem 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.filters-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #586069;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pr-filters {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.filter-checkbox-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+
+.filter-checkbox {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.filter-checkbox-custom {
+  position: relative;
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #d0d7de;
+  border-radius: 4px;
+  background-color: white;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.filter-checkbox-custom::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.filter-checkbox:checked + .filter-checkbox-custom {
+  background-color: #0969da;
+  border-color: #0969da;
+}
+
+.filter-checkbox:checked + .filter-checkbox-custom::after {
+  opacity: 1;
+}
+
+.filter-checkbox:focus + .filter-checkbox-custom {
+  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.2);
+}
+
+.filter-checkbox-control:hover .filter-checkbox-custom {
+  border-color: #0969da;
+}
+
+.filter-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #24292e;
+}
+
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-indicator.status-open {
+  background-color: #1a7f37;
+}
+
+.status-indicator.status-merged {
+  background-color: #0969da;
+}
+
+.status-indicator.status-closed {
+  background-color: #cf222e;
+}
+
 /* Chronological list */
 .chronological-list {
   display: flex;

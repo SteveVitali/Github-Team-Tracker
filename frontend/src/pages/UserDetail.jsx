@@ -38,12 +38,17 @@ export function UserDetail() {
   const [isStacked, setIsStacked] = useState(true)
   const [visibleSeries, setVisibleSeries] = useState({ prs: true, commits: true, reviews: true })
 
-  // New state for grouping toggle and expand/collapse
+  // New state for grouping toggle
   const [useRepoGrouping, setUseRepoGrouping] = useState(() => {
     const stored = localStorage.getItem(`user-grouping-${username}`)
     return stored !== null ? stored === 'true' : true // Default to true (grouped)
   })
-  const [expandedRepos, setExpandedRepos] = useState({})
+
+  // PR status filters (all enabled by default)
+  const [prStatusFilters, setPrStatusFilters] = useState(() => {
+    const stored = localStorage.getItem(`user-pr-filters-${username}`)
+    return stored ? JSON.parse(stored) : { open: true, merged: true, closed: true }
+  })
 
   // Determine smart back navigation
   const getBackNavigation = () => {
@@ -122,6 +127,11 @@ export function UserDetail() {
   useEffect(() => {
     localStorage.setItem(`user-grouping-${username}`, useRepoGrouping.toString())
   }, [username, useRepoGrouping])
+
+  // Save PR status filters to localStorage
+  useEffect(() => {
+    localStorage.setItem(`user-pr-filters-${username}`, JSON.stringify(prStatusFilters))
+  }, [username, prStatusFilters])
 
   useEffect(() => {
     // Subscribe to global queue stats
@@ -726,10 +736,26 @@ export function UserDetail() {
   }
 
   // Apply filtering to data
-  const filteredPrs = useMemo(() => ({
-    prs: filterByPeriod(prs.prs || [], 'createdAt'),
-    count: filterByPeriod(prs.prs || [], 'createdAt').length
-  }), [prs, period])
+  const filteredPrs = useMemo(() => {
+    let filtered = filterByPeriod(prs.prs || [], 'createdAt')
+
+    // Apply status filters
+    filtered = filtered.filter(pr => {
+      const isMerged = !!pr.mergedAt
+      const isOpen = pr.state.toLowerCase() === 'open'
+      const isClosed = pr.state.toLowerCase() === 'closed' && !isMerged
+
+      if (isMerged) return prStatusFilters.merged
+      if (isOpen) return prStatusFilters.open
+      if (isClosed) return prStatusFilters.closed
+      return true
+    })
+
+    return {
+      prs: filtered,
+      count: filtered.length
+    }
+  }, [prs, period, prStatusFilters])
 
   const filteredCommits = useMemo(() => ({
     commits: filterByPeriod(commits.commits || [], (commit) => commit.author?.date),
@@ -746,28 +772,6 @@ export function UserDetail() {
     { id: 'commits', label: 'Commits', count: filteredCommits?.count },
     { id: 'reviews', label: 'Reviews', count: filteredReviews?.count }
   ]
-
-  // Helper function to expand/collapse all repos
-  const expandAllRepos = (items, type) => {
-    const groupedByRepo = items.reduce((acc, item) => {
-      const repo = type === 'commit' ? item.repository.name : item.repository
-      if (!acc[repo]) {
-        acc[repo] = []
-      }
-      acc[repo].push(item)
-      return acc
-    }, {})
-
-    const newExpandedState = {}
-    Object.keys(groupedByRepo).forEach(repo => {
-      newExpandedState[repo] = true
-    })
-    setExpandedRepos(newExpandedState)
-  }
-
-  const collapseAllRepos = () => {
-    setExpandedRepos({})
-  }
 
   // Component for chronological list (no grouping)
   function ChronologicalList({ items, type }) {
@@ -851,6 +855,7 @@ export function UserDetail() {
 
   // Component for grouping items by repository
   function RepositoryGroupedList({ items, type }) {
+    const [expandedRepos, setExpandedRepos] = useState({})
 
     // Group items by repository
     const groupedByRepo = items.reduce((acc, item) => {
@@ -898,7 +903,7 @@ export function UserDetail() {
     return (
       <div className="repo-grouped-list">
         {sortedRepos.map(([repo, repoItems]) => {
-          const isExpanded = expandedRepos[repo] ?? false
+          const isExpanded = expandedRepos[repo] ?? true // Default to expanded
           return (
             <div key={repo} className="repo-section">
               <button
@@ -1205,32 +1210,56 @@ export function UserDetail() {
             />
             <span className="toggle-slider"></span>
           </label>
-          {useRepoGrouping && (
-            <label className="view-toggle-control">
-              <span className="toggle-label">Expand all</span>
-              <input
-                type="checkbox"
-                checked={Object.keys(expandedRepos).length > 0 && Object.values(expandedRepos).every(v => v)}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    const currentItems = activeTab === 'prs' ? filteredPrs.prs :
-                                        activeTab === 'commits' ? filteredCommits.commits :
-                                        filteredReviews.reviews
-                    const currentType = activeTab === 'prs' ? 'pr' :
-                                       activeTab === 'commits' ? 'commit' :
-                                       'review'
-                    expandAllRepos(currentItems, currentType)
-                  } else {
-                    collapseAllRepos()
-                  }
-                }}
-                className="toggle-checkbox"
-              />
-              <span className="toggle-slider"></span>
-            </label>
-          )}
         </div>
       </div>
+
+      {/* PR Status Filters */}
+      {activeTab === 'prs' && (
+        <div className="pr-filters-container">
+          <span className="filters-label">Show:</span>
+          <div className="pr-filters">
+            <label className="filter-checkbox-control">
+              <input
+                type="checkbox"
+                checked={prStatusFilters.open}
+                onChange={(e) => setPrStatusFilters(prev => ({ ...prev, open: e.target.checked }))}
+                className="filter-checkbox"
+              />
+              <span className="filter-checkbox-custom"></span>
+              <span className="filter-label">
+                <span className="status-indicator status-open"></span>
+                Open
+              </span>
+            </label>
+            <label className="filter-checkbox-control">
+              <input
+                type="checkbox"
+                checked={prStatusFilters.merged}
+                onChange={(e) => setPrStatusFilters(prev => ({ ...prev, merged: e.target.checked }))}
+                className="filter-checkbox"
+              />
+              <span className="filter-checkbox-custom"></span>
+              <span className="filter-label">
+                <span className="status-indicator status-merged"></span>
+                Merged
+              </span>
+            </label>
+            <label className="filter-checkbox-control">
+              <input
+                type="checkbox"
+                checked={prStatusFilters.closed}
+                onChange={(e) => setPrStatusFilters(prev => ({ ...prev, closed: e.target.checked }))}
+                className="filter-checkbox"
+              />
+              <span className="filter-checkbox-custom"></span>
+              <span className="filter-label">
+                <span className="status-indicator status-closed"></span>
+                Closed
+              </span>
+            </label>
+          </div>
+        </div>
+      )}
 
       <div className="tab-content">
         {activeTab === 'prs' && (
