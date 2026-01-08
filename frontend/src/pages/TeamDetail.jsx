@@ -786,6 +786,27 @@ export function TeamDetail() {
               {refreshingLatest ? '↻ Refreshing...' : '↻ Refresh Latest'}
             </button>
           </div>
+          {period && (() => {
+            const { from, to } = getDateRangeForPeriod(period)
+            const chunks = chunkDateRange(from, to)
+            const actualFrom = chunks[0]?.from
+            const actualTo = chunks[chunks.length - 1]?.to
+
+            if (actualFrom && actualTo) {
+              return (
+                <div className="date-range-display">
+                  <span className="date-range-label">Data coverage:</span>
+                  <span className="date-range-dates">
+                    {formatDateISO(actualFrom)} to {formatDateISO(actualTo)}
+                  </span>
+                  <span className="date-range-chunks">
+                    ({chunks.length} chunk{chunks.length !== 1 ? 's' : ''})
+                  </span>
+                </div>
+              )
+            }
+            return null
+          })()}
         </div>
 
         {/* Tabs Navigation */}
