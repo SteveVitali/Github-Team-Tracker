@@ -38,6 +38,13 @@ export function UserDetail() {
   const [isStacked, setIsStacked] = useState(true)
   const [visibleSeries, setVisibleSeries] = useState({ prs: true, commits: true, reviews: true })
 
+  // New state for grouping toggle and expand/collapse
+  const [useRepoGrouping, setUseRepoGrouping] = useState(() => {
+    const stored = localStorage.getItem(`user-grouping-${username}`)
+    return stored !== null ? stored === 'true' : true // Default to true (grouped)
+  })
+  const [expandedRepos, setExpandedRepos] = useState({})
+
   // Determine smart back navigation
   const getBackNavigation = () => {
     // Check if we came from another page in our app (has state or referrer)
@@ -110,6 +117,11 @@ export function UserDetail() {
   useEffect(() => {
     localStorage.setItem(`user-tab-${username}`, activeTab)
   }, [username, activeTab])
+
+  // Save grouping preference to localStorage
+  useEffect(() => {
+    localStorage.setItem(`user-grouping-${username}`, useRepoGrouping.toString())
+  }, [username, useRepoGrouping])
 
   useEffect(() => {
     // Subscribe to global queue stats
@@ -735,9 +747,110 @@ export function UserDetail() {
     { id: 'reviews', label: 'Reviews', count: filteredReviews?.count }
   ]
 
+  // Helper function to expand/collapse all repos
+  const expandAllRepos = (items, type) => {
+    const groupedByRepo = items.reduce((acc, item) => {
+      const repo = type === 'commit' ? item.repository.name : item.repository
+      if (!acc[repo]) {
+        acc[repo] = []
+      }
+      acc[repo].push(item)
+      return acc
+    }, {})
+
+    const newExpandedState = {}
+    Object.keys(groupedByRepo).forEach(repo => {
+      newExpandedState[repo] = true
+    })
+    setExpandedRepos(newExpandedState)
+  }
+
+  const collapseAllRepos = () => {
+    setExpandedRepos({})
+  }
+
+  // Component for chronological list (no grouping)
+  function ChronologicalList({ items, type }) {
+    // Sort items by date (newest first)
+    const sortedItems = [...items].sort((a, b) => {
+      if (type === 'pr' || type === 'review') {
+        return new Date(b.createdAt) - new Date(a.createdAt)
+      } else if (type === 'commit') {
+        return new Date(b.author.date) - new Date(a.author.date)
+      }
+      return 0
+    })
+
+    return (
+      <div className="chronological-list">
+        {sortedItems.map((item) => {
+          if (type === 'pr') {
+            const prStatus = item.mergedAt ? 'merged' : item.state.toLowerCase()
+            const prStatusLabel = item.mergedAt ? 'Merged' : item.state
+
+            return (
+              <div key={item.id} className="item-card">
+                <div className="item-header">
+                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="item-title">
+                    {item.title}
+                  </a>
+                  <span className={`status-badge status-${prStatus}`}>
+                    {prStatusLabel}
+                  </span>
+                </div>
+                <div className="item-meta">
+                  <span className="meta-item repo-name-inline">{item.repository}</span>
+                  <span className="meta-item">#{item.number}</span>
+                  <span className="meta-item">{new Date(item.createdAt).toLocaleDateString()}</span>
+                  {item.draft && <span className="meta-badge draft">Draft</span>}
+                </div>
+              </div>
+            )
+          } else if (type === 'commit') {
+            return (
+              <div key={item.sha} className="item-card">
+                <div className="item-header">
+                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="item-title">
+                    {item.message.split('\n')[0]}
+                  </a>
+                </div>
+                <div className="item-meta">
+                  <span className="meta-item repo-name-inline">{item.repository.name}</span>
+                  <span className="meta-item">{new Date(item.author.date).toLocaleDateString()}</span>
+                  <span className="meta-item code">{item.sha.substring(0, 7)}</span>
+                </div>
+              </div>
+            )
+          } else if (type === 'review') {
+            const reviewStatus = item.mergedAt ? 'merged' : item.state.toLowerCase()
+            const reviewStatusLabel = item.mergedAt ? 'Merged' : item.state
+
+            return (
+              <div key={item.id} className="item-card">
+                <div className="item-header">
+                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="item-title">
+                    {item.title}
+                  </a>
+                  <span className={`status-badge status-${reviewStatus}`}>
+                    {reviewStatusLabel}
+                  </span>
+                </div>
+                <div className="item-meta">
+                  <span className="meta-item repo-name-inline">{item.repository}</span>
+                  <span className="meta-item">#{item.number}</span>
+                  <span className="meta-item">{new Date(item.createdAt).toLocaleDateString()}</span>
+                </div>
+              </div>
+            )
+          }
+          return null
+        })}
+      </div>
+    )
+  }
+
   // Component for grouping items by repository
   function RepositoryGroupedList({ items, type }) {
-    const [expandedRepos, setExpandedRepos] = useState({})
 
     // Group items by repository
     const groupedByRepo = items.reduce((acc, item) => {
@@ -1069,26 +1182,71 @@ export function UserDetail() {
         </div>
       </div>
 
-      <div className="tabs">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={`tab ${activeTab === tab.id ? 'tab-active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label} {tab.count !== undefined && `(${tab.count})`}
-          </button>
-        ))}
+      <div className="tabs-container">
+        <div className="tabs">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              className={`tab ${activeTab === tab.id ? 'tab-active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label} {tab.count !== undefined && `(${tab.count})`}
+            </button>
+          ))}
+        </div>
+        <div className="tabs-controls">
+          <label className="view-toggle-control">
+            <span className="toggle-label">Group by repo</span>
+            <input
+              type="checkbox"
+              checked={useRepoGrouping}
+              onChange={(e) => setUseRepoGrouping(e.target.checked)}
+              className="toggle-checkbox"
+            />
+            <span className="toggle-slider"></span>
+          </label>
+          {useRepoGrouping && (
+            <label className="view-toggle-control">
+              <span className="toggle-label">Expand all</span>
+              <input
+                type="checkbox"
+                checked={Object.keys(expandedRepos).length > 0 && Object.values(expandedRepos).every(v => v)}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    const currentItems = activeTab === 'prs' ? filteredPrs.prs :
+                                        activeTab === 'commits' ? filteredCommits.commits :
+                                        filteredReviews.reviews
+                    const currentType = activeTab === 'prs' ? 'pr' :
+                                       activeTab === 'commits' ? 'commit' :
+                                       'review'
+                    expandAllRepos(currentItems, currentType)
+                  } else {
+                    collapseAllRepos()
+                  }
+                }}
+                className="toggle-checkbox"
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          )}
+        </div>
       </div>
 
       <div className="tab-content">
         {activeTab === 'prs' && (
           <div className="prs-list">
             {filteredPrs?.prs && filteredPrs.prs.length > 0 ? (
-              <RepositoryGroupedList
-                items={filteredPrs.prs}
-                type="pr"
-              />
+              useRepoGrouping ? (
+                <RepositoryGroupedList
+                  items={filteredPrs.prs}
+                  type="pr"
+                />
+              ) : (
+                <ChronologicalList
+                  items={filteredPrs.prs}
+                  type="pr"
+                />
+              )
             ) : (
               <div className="empty-state">No pull requests found for the selected time period</div>
             )}
@@ -1098,10 +1256,17 @@ export function UserDetail() {
         {activeTab === 'commits' && (
           <div className="commits-list">
             {filteredCommits?.commits && filteredCommits.commits.length > 0 ? (
-              <RepositoryGroupedList
-                items={filteredCommits.commits}
-                type="commit"
-              />
+              useRepoGrouping ? (
+                <RepositoryGroupedList
+                  items={filteredCommits.commits}
+                  type="commit"
+                />
+              ) : (
+                <ChronologicalList
+                  items={filteredCommits.commits}
+                  type="commit"
+                />
+              )
             ) : (
               <div className="empty-state">No commits found for the selected time period</div>
             )}
@@ -1111,10 +1276,17 @@ export function UserDetail() {
         {activeTab === 'reviews' && (
           <div className="reviews-list">
             {filteredReviews?.reviews && filteredReviews.reviews.length > 0 ? (
-              <RepositoryGroupedList
-                items={filteredReviews.reviews}
-                type="review"
-              />
+              useRepoGrouping ? (
+                <RepositoryGroupedList
+                  items={filteredReviews.reviews}
+                  type="review"
+                />
+              ) : (
+                <ChronologicalList
+                  items={filteredReviews.reviews}
+                  type="review"
+                />
+              )
             ) : (
               <div className="empty-state">No reviews found for the selected time period</div>
             )}
