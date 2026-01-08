@@ -1199,7 +1199,12 @@ export function UserDetail() {
             </button>
           ))}
         </div>
-        <div className="tabs-controls">
+      </div>
+
+      {/* View Controls & Filters */}
+      <div className="view-controls-container">
+        {/* Group by repo toggle - always visible */}
+        <div className="view-controls-section">
           <label className="view-toggle-control">
             <span className="toggle-label">Group by repo</span>
             <input
@@ -1211,55 +1216,58 @@ export function UserDetail() {
             <span className="toggle-slider"></span>
           </label>
         </div>
-      </div>
 
-      {/* PR Status Filters */}
-      {activeTab === 'prs' && (
-        <div className="pr-filters-container">
-          <span className="filters-label">Show:</span>
-          <div className="pr-filters">
-            <label className="filter-checkbox-control">
-              <input
-                type="checkbox"
-                checked={prStatusFilters.open}
-                onChange={(e) => setPrStatusFilters(prev => ({ ...prev, open: e.target.checked }))}
-                className="filter-checkbox"
-              />
-              <span className="filter-checkbox-custom"></span>
-              <span className="filter-label">
-                <span className="status-indicator status-open"></span>
-                Open
-              </span>
-            </label>
-            <label className="filter-checkbox-control">
-              <input
-                type="checkbox"
-                checked={prStatusFilters.merged}
-                onChange={(e) => setPrStatusFilters(prev => ({ ...prev, merged: e.target.checked }))}
-                className="filter-checkbox"
-              />
-              <span className="filter-checkbox-custom"></span>
-              <span className="filter-label">
-                <span className="status-indicator status-merged"></span>
-                Merged
-              </span>
-            </label>
-            <label className="filter-checkbox-control">
-              <input
-                type="checkbox"
-                checked={prStatusFilters.closed}
-                onChange={(e) => setPrStatusFilters(prev => ({ ...prev, closed: e.target.checked }))}
-                className="filter-checkbox"
-              />
-              <span className="filter-checkbox-custom"></span>
-              <span className="filter-label">
-                <span className="status-indicator status-closed"></span>
-                Closed
-              </span>
-            </label>
-          </div>
-        </div>
-      )}
+        {/* PR Status Filters - only for PRs tab */}
+        {activeTab === 'prs' && (
+          <>
+            <div className="filters-divider"></div>
+            <div className="view-controls-section">
+              <span className="filters-label">Show:</span>
+              <div className="pr-filters">
+                <label className="filter-checkbox-control">
+                  <input
+                    type="checkbox"
+                    checked={prStatusFilters.open}
+                    onChange={(e) => setPrStatusFilters(prev => ({ ...prev, open: e.target.checked }))}
+                    className="filter-checkbox"
+                  />
+                  <span className="filter-checkbox-custom"></span>
+                  <span className="filter-label">
+                    <span className="status-indicator status-open"></span>
+                    Open
+                  </span>
+                </label>
+                <label className="filter-checkbox-control">
+                  <input
+                    type="checkbox"
+                    checked={prStatusFilters.merged}
+                    onChange={(e) => setPrStatusFilters(prev => ({ ...prev, merged: e.target.checked }))}
+                    className="filter-checkbox"
+                  />
+                  <span className="filter-checkbox-custom"></span>
+                  <span className="filter-label">
+                    <span className="status-indicator status-merged"></span>
+                    Merged
+                  </span>
+                </label>
+                <label className="filter-checkbox-control">
+                  <input
+                    type="checkbox"
+                    checked={prStatusFilters.closed}
+                    onChange={(e) => setPrStatusFilters(prev => ({ ...prev, closed: e.target.checked }))}
+                    className="filter-checkbox"
+                  />
+                  <span className="filter-checkbox-custom"></span>
+                  <span className="filter-label">
+                    <span className="status-indicator status-closed"></span>
+                    Closed
+                  </span>
+                </label>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
 
       <div className="tab-content">
         {activeTab === 'prs' && (
