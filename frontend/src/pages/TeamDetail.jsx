@@ -33,6 +33,20 @@ export function TeamDetail() {
   const [chunkStats, setChunkStats] = useState({}) // { 'YYYY-MM-DD': { prs: N, commits: N, reviews: N } }
   const [abortController, setAbortController] = useState(null)
 
+  // PR status filters (open and merged enabled by default, closed disabled)
+  const [prStatusFilters, setPrStatusFilters] = useState(() => {
+    const stored = localStorage.getItem(`team-pr-filters-${teamSlug}`)
+    return stored ? JSON.parse(stored) : { open: true, merged: true, closed: false }
+  })
+
+  // Repository grouping toggle
+  const [useRepoGrouping, setUseRepoGrouping] = useState(() => {
+    const stored = localStorage.getItem(`team-grouping-${teamSlug}`)
+    return stored !== null ? stored === 'true' : true // Default to true (grouped by user)
+  })
+
+  const [expandedRepos, setExpandedRepos] = useState({})
+
   // Handler to cancel ongoing requests
   const handleCancelRequests = () => {
     if (abortController) {
@@ -63,6 +77,16 @@ export function TeamDetail() {
   useEffect(() => {
     localStorage.setItem(`team-tab-${teamSlug}`, activeTab)
   }, [teamSlug, activeTab])
+
+  // Save PR status filters to localStorage
+  useEffect(() => {
+    localStorage.setItem(`team-pr-filters-${teamSlug}`, JSON.stringify(prStatusFilters))
+  }, [teamSlug, prStatusFilters])
+
+  // Save grouping preference to localStorage
+  useEffect(() => {
+    localStorage.setItem(`team-grouping-${teamSlug}`, useRepoGrouping.toString())
+  }, [teamSlug, useRepoGrouping])
 
   useEffect(() => {
     // Subscribe to global queue stats
@@ -459,19 +483,36 @@ export function TeamDetail() {
     }
   }
 
-  // Filter PRs based on period (client-side filtering for 7 days)
+  // Filter PRs based on period and status filters (client-side filtering for 7 days)
   const filteredTeamPRs = useMemo(() => {
-    if (period !== '7days') return teamPRs
+    let filtered = teamPRs
 
-    const sevenDaysAgo = new Date()
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-    sevenDaysAgo.setHours(0, 0, 0, 0)
+    // Apply period filter for 7 days
+    if (period === '7days') {
+      const sevenDaysAgo = new Date()
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+      sevenDaysAgo.setHours(0, 0, 0, 0)
 
-    return teamPRs.filter(pr => {
-      const prDate = new Date(pr.createdAt)
-      return prDate >= sevenDaysAgo
+      filtered = filtered.filter(pr => {
+        const prDate = new Date(pr.createdAt)
+        return prDate >= sevenDaysAgo
+      })
+    }
+
+    // Apply status filters
+    filtered = filtered.filter(pr => {
+      const isMerged = !!pr.mergedAt
+      const isOpen = pr.state?.toLowerCase() === 'open'
+      const isClosed = pr.state?.toLowerCase() === 'closed' && !isMerged
+
+      if (isMerged) return prStatusFilters.merged
+      if (isOpen) return prStatusFilters.open
+      if (isClosed) return prStatusFilters.closed
+      return true
     })
-  }, [teamPRs, period])
+
+    return filtered
+  }, [teamPRs, period, prStatusFilters])
 
   // Group and sort team PRs by status, then by user (must be before early returns)
   const groupedTeamPRs = useMemo(() => {
@@ -632,6 +673,83 @@ export function TeamDetail() {
       ...prev,
       [key]: !prev[key]
     }))
+  }
+
+  // Component for chronological list of PRs (grouped by repo, not user)
+  function ChronologicalPRList({ prs }) {
+    // Group PRs by repository
+    const groupedByRepo = prs.reduce((acc, pr) => {
+      const repo = pr.repository
+      if (!acc[repo]) {
+        acc[repo] = []
+      }
+      acc[repo].push(pr)
+      return acc
+    }, {})
+
+    // Sort repos by PR count (descending)
+    const sortedRepos = Object.entries(groupedByRepo).sort((a, b) => b[1].length - a[1].length)
+
+    // Sort PRs within each repo by date (newest first)
+    sortedRepos.forEach(([repo, repoPrs]) => {
+      repoPrs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    })
+
+    return (
+      <div className="repo-grouped-list">
+        {sortedRepos.map(([repo, repoPrs]) => {
+          const isExpanded = expandedRepos[repo] ?? true // Default to expanded
+          return (
+            <div key={repo} className="repo-section">
+              <button
+                className="repo-header"
+                onClick={() => setExpandedRepos(prev => ({ ...prev, [repo]: !prev[repo] }))}
+              >
+                <div className="repo-header-content">
+                  <span className="repo-name">{repo}</span>
+                  <span className="repo-count">{repoPrs.length}</span>
+                </div>
+                <span className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>▼</span>
+              </button>
+
+              {isExpanded && (
+                <div className="repo-items">
+                  {repoPrs.map((pr) => {
+                    const prStatus = pr.mergedAt ? 'merged' : pr.state?.toLowerCase()
+                    const prStatusLabel = pr.mergedAt ? 'Merged' : pr.state
+
+                    return (
+                      <div key={pr.id} className="item-card">
+                        <div className="item-header">
+                          <a href={pr.url} target="_blank" rel="noopener noreferrer" className="item-title">
+                            {pr.title}
+                          </a>
+                          <span className={`status-badge status-${prStatus}`}>
+                            {prStatusLabel}
+                          </span>
+                        </div>
+                        <div className="item-meta">
+                          <Link
+                            to={`/user/${pr.author}`}
+                            state={{ from: `/team/${teamSlug}` }}
+                            className="meta-item user-link"
+                          >
+                            @{pr.author}
+                          </Link>
+                          <span className="meta-item">#{pr.number}</span>
+                          <span className="meta-item">{new Date(pr.createdAt).toLocaleDateString()}</span>
+                          {pr.draft && <span className="meta-badge draft">Draft</span>}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
   }
 
   const handleExportTeamCache = async () => {
@@ -1054,9 +1172,76 @@ export function TeamDetail() {
         )}
 
         {/* PRs Tab */}
-        {activeTab === 'prs' && filteredTeamPRs.length > 0 && (
+        {activeTab === 'prs' && (
           <div className="team-prs-section">
-            <h3>Team Pull Requests ({filteredTeamPRs.length})</h3>
+            <div className="prs-header-with-controls">
+              <h3>Team Pull Requests ({filteredTeamPRs.length})</h3>
+              <div className="prs-controls">
+                {/* Grouping Toggle */}
+                <label className="view-toggle-control">
+                  <span className="toggle-label">Group by {useRepoGrouping ? 'user' : 'repo'}</span>
+                  <input
+                    type="checkbox"
+                    checked={useRepoGrouping}
+                    onChange={(e) => setUseRepoGrouping(e.target.checked)}
+                    className="toggle-checkbox"
+                  />
+                  <span className="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            {/* PR Status Filters Bar - matching UserDetail */}
+            <div className="pr-status-filters-bar">
+              <span className="filters-label">Show:</span>
+              <div className="pr-filters">
+                <label className="filter-checkbox-control">
+                  <input
+                    type="checkbox"
+                    checked={prStatusFilters.open}
+                    onChange={(e) => setPrStatusFilters(prev => ({ ...prev, open: e.target.checked }))}
+                    className="filter-checkbox"
+                  />
+                  <span className="filter-checkbox-custom"></span>
+                  <span className="filter-label">
+                    <span className="status-indicator status-open"></span>
+                    Open
+                  </span>
+                </label>
+                <label className="filter-checkbox-control">
+                  <input
+                    type="checkbox"
+                    checked={prStatusFilters.merged}
+                    onChange={(e) => setPrStatusFilters(prev => ({ ...prev, merged: e.target.checked }))}
+                    className="filter-checkbox"
+                  />
+                  <span className="filter-checkbox-custom"></span>
+                  <span className="filter-label">
+                    <span className="status-indicator status-merged"></span>
+                    Merged
+                  </span>
+                </label>
+                <label className="filter-checkbox-control">
+                  <input
+                    type="checkbox"
+                    checked={prStatusFilters.closed}
+                    onChange={(e) => setPrStatusFilters(prev => ({ ...prev, closed: e.target.checked }))}
+                    className="filter-checkbox"
+                  />
+                  <span className="filter-checkbox-custom"></span>
+                  <span className="filter-label">
+                    <span className="status-indicator status-closed"></span>
+                    Closed
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            {filteredTeamPRs.length === 0 ? (
+              <div className="empty-state">No pull requests match the selected filters</div>
+            ) : useRepoGrouping ? (
+              // Original grouped by user view
+              <>
 
             {/* Open PRs */}
             {groupedTeamPRs.open.length > 0 && (
@@ -1219,6 +1404,11 @@ export function TeamDetail() {
                   </div>
                 )}
               </div>
+            )}
+              </>
+            ) : (
+              // Chronological view (grouped by repo)
+              <ChronologicalPRList prs={filteredTeamPRs} />
             )}
           </div>
         )}

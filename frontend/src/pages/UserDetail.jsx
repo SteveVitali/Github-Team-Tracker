@@ -44,10 +44,10 @@ export function UserDetail() {
     return stored !== null ? stored === 'true' : true // Default to true (grouped)
   })
 
-  // PR status filters (all enabled by default)
+  // PR status filters (open and merged enabled by default, closed disabled)
   const [prStatusFilters, setPrStatusFilters] = useState(() => {
     const stored = localStorage.getItem(`user-pr-filters-${username}`)
-    return stored ? JSON.parse(stored) : { open: true, merged: true, closed: true }
+    return stored ? JSON.parse(stored) : { open: true, merged: true, closed: false }
   })
 
   // Determine smart back navigation
