@@ -38,10 +38,10 @@ export function UserDetail() {
   const [isStacked, setIsStacked] = useState(true)
   const [visibleSeries, setVisibleSeries] = useState({ prs: true, commits: true, reviews: true })
 
-  // New state for grouping toggle
-  const [useRepoGrouping, setUseRepoGrouping] = useState(() => {
-    const stored = localStorage.getItem(`user-grouping-${username}`)
-    return stored !== null ? stored === 'true' : true // Default to true (grouped)
+  // Grouping mode: 'user' | 'repo' | 'none' (note: 'user' doesn't make sense for single user, but keeping for consistency)
+  const [groupingMode, setGroupingMode] = useState(() => {
+    const stored = localStorage.getItem(`user-grouping-mode-${username}`)
+    return stored || 'repo' // Default to grouped by repo for user detail
   })
 
   // PR status filters (open and merged enabled by default, closed disabled)
@@ -123,10 +123,10 @@ export function UserDetail() {
     localStorage.setItem(`user-tab-${username}`, activeTab)
   }, [username, activeTab])
 
-  // Save grouping preference to localStorage
+  // Save grouping mode to localStorage
   useEffect(() => {
-    localStorage.setItem(`user-grouping-${username}`, useRepoGrouping.toString())
-  }, [username, useRepoGrouping])
+    localStorage.setItem(`user-grouping-mode-${username}`, groupingMode)
+  }, [username, groupingMode])
 
   // Save PR status filters to localStorage
   useEffect(() => {
@@ -773,8 +773,8 @@ export function UserDetail() {
     { id: 'reviews', label: 'Reviews', count: filteredReviews?.count }
   ]
 
-  // Component for chronological list (no grouping)
-  function ChronologicalList({ items, type }) {
+  // Component for flat chronological list (no grouping) - condensed table style
+  function FlatChronologicalList({ items, type }) {
     // Sort items by date (newest first)
     const sortedItems = [...items].sort((a, b) => {
       if (type === 'pr' || type === 'review') {
@@ -786,43 +786,33 @@ export function UserDetail() {
     })
 
     return (
-      <div className="chronological-list">
+      <div className="team-prs-list">
         {sortedItems.map((item) => {
           if (type === 'pr') {
             const prStatus = item.mergedAt ? 'merged' : item.state.toLowerCase()
             const prStatusLabel = item.mergedAt ? 'Merged' : item.state
 
             return (
-              <div key={item.id} className="item-card">
-                <div className="item-header">
-                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="item-title">
-                    {item.title}
-                  </a>
-                  <span className={`status-badge status-${prStatus}`}>
-                    {prStatusLabel}
-                  </span>
-                </div>
-                <div className="item-meta">
-                  <span className="meta-item repo-name-inline">{item.repository}</span>
-                  <span className="meta-item">#{item.number}</span>
-                  <span className="meta-item">{new Date(item.createdAt).toLocaleDateString()}</span>
-                  {item.draft && <span className="meta-badge draft">Draft</span>}
-                </div>
+              <div key={item.id} className="team-pr-card">
+                <span className="pr-repo">{item.repository}</span>
+                <a href={item.url} target="_blank" rel="noopener noreferrer" className="pr-title">
+                  {item.title}
+                </a>
+                <span className={`status-badge status-${prStatus}`}>{prStatusLabel}</span>
+                {item.draft && <span className="meta-badge draft">Draft</span>}
+                <span className="pr-number">#{item.number}</span>
+                <span className="pr-date">{new Date(item.createdAt).toLocaleDateString()}</span>
               </div>
             )
           } else if (type === 'commit') {
             return (
-              <div key={item.sha} className="item-card">
-                <div className="item-header">
-                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="item-title">
-                    {item.message.split('\n')[0]}
-                  </a>
-                </div>
-                <div className="item-meta">
-                  <span className="meta-item repo-name-inline">{item.repository.name}</span>
-                  <span className="meta-item">{new Date(item.author.date).toLocaleDateString()}</span>
-                  <span className="meta-item code">{item.sha.substring(0, 7)}</span>
-                </div>
+              <div key={item.sha} className="team-pr-card">
+                <span className="pr-repo">{item.repository.name}</span>
+                <a href={item.url} target="_blank" rel="noopener noreferrer" className="pr-title">
+                  {item.message.split('\n')[0]}
+                </a>
+                <span className="pr-date">{new Date(item.author.date).toLocaleDateString()}</span>
+                <span className="pr-number code">{item.sha.substring(0, 7)}</span>
               </div>
             )
           } else if (type === 'review') {
@@ -830,20 +820,14 @@ export function UserDetail() {
             const reviewStatusLabel = item.mergedAt ? 'Merged' : item.state
 
             return (
-              <div key={item.id} className="item-card">
-                <div className="item-header">
-                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="item-title">
-                    {item.title}
-                  </a>
-                  <span className={`status-badge status-${reviewStatus}`}>
-                    {reviewStatusLabel}
-                  </span>
-                </div>
-                <div className="item-meta">
-                  <span className="meta-item repo-name-inline">{item.repository}</span>
-                  <span className="meta-item">#{item.number}</span>
-                  <span className="meta-item">{new Date(item.createdAt).toLocaleDateString()}</span>
-                </div>
+              <div key={item.id} className="team-pr-card">
+                <span className="pr-repo">{item.repository}</span>
+                <a href={item.url} target="_blank" rel="noopener noreferrer" className="pr-title">
+                  {item.title}
+                </a>
+                <span className={`status-badge status-${reviewStatus}`}>{reviewStatusLabel}</span>
+                <span className="pr-number">#{item.number}</span>
+                <span className="pr-date">{new Date(item.createdAt).toLocaleDateString()}</span>
               </div>
             )
           }
@@ -918,63 +902,45 @@ export function UserDetail() {
               </button>
 
               {isExpanded && (
-                <div className="repo-items">
+                <div className="team-prs-list">
                   {repoItems.map((item) => {
                     if (type === 'pr') {
-                      // Determine the actual status: if mergedAt exists, it's merged, not just closed
                       const prStatus = item.mergedAt ? 'merged' : item.state.toLowerCase()
                       const prStatusLabel = item.mergedAt ? 'Merged' : item.state
 
                       return (
-                        <div key={item.id} className="item-card">
-                          <div className="item-header">
-                            <a href={item.url} target="_blank" rel="noopener noreferrer" className="item-title">
-                              {item.title}
-                            </a>
-                            <span className={`status-badge status-${prStatus}`}>
-                              {prStatusLabel}
-                            </span>
-                          </div>
-                          <div className="item-meta">
-                            <span className="meta-item">#{item.number}</span>
-                            <span className="meta-item">{new Date(item.createdAt).toLocaleDateString()}</span>
-                            {item.draft && <span className="meta-badge draft">Draft</span>}
-                          </div>
+                        <div key={item.id} className="team-pr-card">
+                          <a href={item.url} target="_blank" rel="noopener noreferrer" className="pr-title">
+                            {item.title}
+                          </a>
+                          <span className={`status-badge status-${prStatus}`}>{prStatusLabel}</span>
+                          {item.draft && <span className="meta-badge draft">Draft</span>}
+                          <span className="pr-number">#{item.number}</span>
+                          <span className="pr-date">{new Date(item.createdAt).toLocaleDateString()}</span>
                         </div>
                       )
                     } else if (type === 'commit') {
                       return (
-                        <div key={item.sha} className="item-card">
-                          <div className="item-header">
-                            <a href={item.url} target="_blank" rel="noopener noreferrer" className="item-title">
-                              {item.message.split('\n')[0]}
-                            </a>
-                          </div>
-                          <div className="item-meta">
-                            <span className="meta-item">{new Date(item.author.date).toLocaleDateString()}</span>
-                            <span className="meta-item code">{item.sha.substring(0, 7)}</span>
-                          </div>
+                        <div key={item.sha} className="team-pr-card">
+                          <a href={item.url} target="_blank" rel="noopener noreferrer" className="pr-title">
+                            {item.message.split('\n')[0]}
+                          </a>
+                          <span className="pr-date">{new Date(item.author.date).toLocaleDateString()}</span>
+                          <span className="pr-number code">{item.sha.substring(0, 7)}</span>
                         </div>
                       )
                     } else if (type === 'review') {
-                      // Determine the actual status: if mergedAt exists, it's merged, not just closed
                       const reviewStatus = item.mergedAt ? 'merged' : item.state.toLowerCase()
                       const reviewStatusLabel = item.mergedAt ? 'Merged' : item.state
 
                       return (
-                        <div key={item.id} className="item-card">
-                          <div className="item-header">
-                            <a href={item.url} target="_blank" rel="noopener noreferrer" className="item-title">
-                              {item.title}
-                            </a>
-                            <span className={`status-badge status-${reviewStatus}`}>
-                              {reviewStatusLabel}
-                            </span>
-                          </div>
-                          <div className="item-meta">
-                            <span className="meta-item">#{item.number}</span>
-                            <span className="meta-item">{new Date(item.createdAt).toLocaleDateString()}</span>
-                          </div>
+                        <div key={item.id} className="team-pr-card">
+                          <a href={item.url} target="_blank" rel="noopener noreferrer" className="pr-title">
+                            {item.title}
+                          </a>
+                          <span className={`status-badge status-${reviewStatus}`}>{reviewStatusLabel}</span>
+                          <span className="pr-number">#{item.number}</span>
+                          <span className="pr-date">{new Date(item.createdAt).toLocaleDateString()}</span>
                         </div>
                       )
                     }
@@ -1200,16 +1166,25 @@ export function UserDetail() {
           ))}
         </div>
         <div className="tabs-right-controls">
-          <label className="view-toggle-control">
-            <span className="toggle-label">Group by repo</span>
-            <input
-              type="checkbox"
-              checked={useRepoGrouping}
-              onChange={(e) => setUseRepoGrouping(e.target.checked)}
-              className="toggle-checkbox"
-            />
-            <span className="toggle-slider"></span>
-          </label>
+          {/* Grouping Mode Segmented Control - only for PRs, Commits, Reviews tabs */}
+          {(activeTab === 'prs' || activeTab === 'commits' || activeTab === 'reviews') && (
+            <div className="segmented-control">
+              <button
+                className={`segment ${groupingMode === 'repo' ? 'segment-active' : ''}`}
+                onClick={() => setGroupingMode('repo')}
+                title="Group by repository"
+              >
+                By Repo
+              </button>
+              <button
+                className={`segment ${groupingMode === 'none' ? 'segment-active' : ''}`}
+                onClick={() => setGroupingMode('none')}
+                title="Flat chronological list"
+              >
+                Chronological
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1265,13 +1240,13 @@ export function UserDetail() {
         {activeTab === 'prs' && (
           <div className="prs-list">
             {filteredPrs?.prs && filteredPrs.prs.length > 0 ? (
-              useRepoGrouping ? (
+              groupingMode === 'repo' ? (
                 <RepositoryGroupedList
                   items={filteredPrs.prs}
                   type="pr"
                 />
               ) : (
-                <ChronologicalList
+                <FlatChronologicalList
                   items={filteredPrs.prs}
                   type="pr"
                 />
@@ -1285,13 +1260,13 @@ export function UserDetail() {
         {activeTab === 'commits' && (
           <div className="commits-list">
             {filteredCommits?.commits && filteredCommits.commits.length > 0 ? (
-              useRepoGrouping ? (
+              groupingMode === 'repo' ? (
                 <RepositoryGroupedList
                   items={filteredCommits.commits}
                   type="commit"
                 />
               ) : (
-                <ChronologicalList
+                <FlatChronologicalList
                   items={filteredCommits.commits}
                   type="commit"
                 />
@@ -1305,13 +1280,13 @@ export function UserDetail() {
         {activeTab === 'reviews' && (
           <div className="reviews-list">
             {filteredReviews?.reviews && filteredReviews.reviews.length > 0 ? (
-              useRepoGrouping ? (
+              groupingMode === 'repo' ? (
                 <RepositoryGroupedList
                   items={filteredReviews.reviews}
                   type="review"
                 />
               ) : (
-                <ChronologicalList
+                <FlatChronologicalList
                   items={filteredReviews.reviews}
                   type="review"
                 />

@@ -1120,3 +1120,109 @@
   padding: 0.25rem 0.625rem;
   border-radius: 4px;
 }
+
+/* Segmented Control */
+.segmented-control {
+  display: inline-flex;
+  background: #f6f8fa;
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.segment {
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #586069;
+  font-weight: 500;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  white-space: nowrap;
+  position: relative;
+}
+
+.segment:hover {
+  color: #24292e;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.segment-active {
+  background: white;
+  color: #0969da;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.segment-active:hover {
+  background: white;
+  color: #0969da;
+}
+
+/* Condensed table rows (team-pr-card style) */
+.team-prs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-top: 1px solid #d0d7de;
+}
+
+.team-pr-card {
+  padding: 0.75rem 1.25rem;
+  background: white;
+  border-bottom: 1px solid #e8ebed;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: background 0.2s;
+}
+
+.team-pr-card:last-child {
+  border-bottom: none;
+}
+
+.team-pr-card:hover {
+  background: #f6f8fa;
+}
+
+.pr-repo {
+  color: #586069;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.pr-number {
+  color: #586069;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.pr-date {
+  color: #586069;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.pr-title {
+  color: #0969da;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.875rem;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-title:hover {
+  text-decoration: underline;
+}
+
+.code {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.8125rem;
+}
