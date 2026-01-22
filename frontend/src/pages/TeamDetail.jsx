@@ -149,7 +149,12 @@ export function TeamDetail() {
 
   // Separate effect to fetch member contributions when team or period changes
   useEffect(() => {
-    const members = team?.members || []
+    const allMembers = team?.members || []
+    // Filter out marcnpopa (automated spam)
+    const members = allMembers.filter(member => {
+      const username = member.login || member.username || member.name || member
+      return username !== 'marcnpopa'
+    })
     if (members.length === 0) return
 
     // Create AbortController for this fetch cycle
@@ -428,7 +433,11 @@ export function TeamDetail() {
 
       console.log(`[TeamDetail] Refreshing latest chunk: ${fromStr} to ${toStr}`)
 
-      const members = team.members
+      // Filter out marcnpopa
+      const members = team.members.filter(member => {
+        const username = member.login || member.username || member.name || member
+        return username !== 'marcnpopa'
+      })
       const totalRequests = members.length * 3
       let completed = 0
       let errors = 0
@@ -486,6 +495,9 @@ export function TeamDetail() {
   // Filter PRs based on period and status filters (client-side filtering for 7 days)
   const filteredTeamPRs = useMemo(() => {
     let filtered = teamPRs
+
+    // Filter out marcnpopa (automated spam)
+    filtered = filtered.filter(pr => pr.author !== 'marcnpopa')
 
     // Apply period filter for 7 days
     if (period === '7days') {
@@ -615,6 +627,10 @@ export function TeamDetail() {
     if (members.length === 0) return []
 
     return members
+      .filter(member => {
+        const username = member.login || member.username || member.name || member
+        return username !== 'marcnpopa' // Filter out marcnpopa
+      })
       .map(member => {
         const username = member.login || member.username || member.name || member
         const stats = memberStats[username] || { prs: 0, commits: 0, reviews: 0, total: 0 }
@@ -643,20 +659,25 @@ export function TeamDetail() {
   }, [chartData])
 
   // Sort members: completed first, then by total contributions (descending)
-  const sortedMembers = team?.members ? [...team.members].sort((a, b) => {
-    const usernameA = a.login || a.username || a.name || a
-    const usernameB = b.login || b.username || b.name || b
-    const statsA = memberStats[usernameA] || { total: 0, loading: true }
-    const statsB = memberStats[usernameB] || { total: 0, loading: true }
+  const sortedMembers = team?.members ? [...team.members]
+    .filter(member => {
+      const username = member.login || member.username || member.name || member
+      return username !== 'marcnpopa' // Filter out marcnpopa
+    })
+    .sort((a, b) => {
+      const usernameA = a.login || a.username || a.name || a
+      const usernameB = b.login || b.username || b.name || b
+      const statsA = memberStats[usernameA] || { total: 0, loading: true }
+      const statsB = memberStats[usernameB] || { total: 0, loading: true }
 
-    // Sort by loading state first (completed before loading)
-    if (statsA.loading !== statsB.loading) {
-      return statsA.loading ? 1 : -1
-    }
+      // Sort by loading state first (completed before loading)
+      if (statsA.loading !== statsB.loading) {
+        return statsA.loading ? 1 : -1
+      }
 
-    // Then by total contributions (descending)
-    return statsB.total - statsA.total
-  }) : []
+      // Then by total contributions (descending)
+      return statsB.total - statsA.total
+    }) : []
 
   if (error) {
     return (
