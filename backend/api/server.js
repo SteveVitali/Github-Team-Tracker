@@ -23,13 +23,54 @@ initializeDatabase();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Security middleware
-app.use(helmet());
+// Manual CORS middleware to ensure credentials header is always set
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
 
-// CORS - Allow credentials for session cookies
-app.use(cors({
-  origin: config.FRONTEND_URL,
-  credentials: true
+  // Allow requests with no origin (like mobile apps or curl requests)
+  if (!origin) {
+    return next();
+  }
+
+  // In development, allow any localhost port
+  if (process.env.NODE_ENV !== 'production' && origin.startsWith('http://localhost:')) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Expose-Headers', 'set-cookie');
+    res.setHeader('Vary', 'Origin');
+
+    // Handle preflight
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
+    return next();
+  }
+
+  // In production, only allow the configured frontend URL
+  if (origin === config.FRONTEND_URL) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Expose-Headers', 'set-cookie');
+    res.setHeader('Vary', 'Origin');
+
+    // Handle preflight
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
+    return next();
+  }
+
+  // Origin not allowed
+  next();
+});
+
+// Security middleware
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
 app.use(express.json());
