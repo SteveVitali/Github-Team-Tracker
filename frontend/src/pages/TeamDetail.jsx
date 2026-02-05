@@ -5,7 +5,7 @@ import { indexedDBCache } from '../indexeddb-cache'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { useScrollRestoration } from '../hooks/useScrollRestoration'
 import { chunkDateRange, getDateRangeForPeriod, formatDateISO, getChunkStart, getChunkEnd } from '../utils/dateChunking'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { Tabs } from '../components/Tabs'
 import './TeamDetail.css'
 
@@ -658,6 +658,43 @@ export function TeamDetail() {
     return Math.max(0, Math.floor(dataLength / 15) - 1) // Show ~15 labels
   }, [chartData])
 
+  // Pie chart colors - generate distinct colors for each team member
+  const PIE_COLORS = [
+    '#0969da', '#2da44e', '#bf3989', '#8250df', '#cf222e',
+    '#fb8f44', '#1a7f37', '#0550ae', '#6639ba', '#953800',
+    '#57606a', '#9a6700', '#0969da', '#2da44e', '#bf3989'
+  ]
+
+  // Calculate pie chart data for contribution share
+  const pieChartData = useMemo(() => {
+    if (chartData.length === 0) return { prs: [], commits: [], reviews: [], total: [] }
+
+    const totals = chartData.reduce((acc, member) => ({
+      prs: acc.prs + member.PRs,
+      commits: acc.commits + member.Commits,
+      reviews: acc.reviews + member.Reviews,
+      total: acc.total + member.Total
+    }), { prs: 0, commits: 0, reviews: 0, total: 0 })
+
+    const createPieData = (key, total) => {
+      if (total === 0) return []
+      return chartData
+        .filter(member => member[key] > 0)
+        .map(member => ({
+          name: member.name,
+          value: member[key],
+          percentage: ((member[key] / total) * 100).toFixed(1)
+        }))
+    }
+
+    return {
+      prs: createPieData('PRs', totals.prs),
+      commits: createPieData('Commits', totals.commits),
+      reviews: createPieData('Reviews', totals.reviews),
+      total: createPieData('Total', totals.total)
+    }
+  }, [chartData])
+
   // Sort members: completed first, then by total contributions (descending)
   const sortedMembers = team?.members ? [...team.members]
     .filter(member => {
@@ -1084,6 +1121,120 @@ export function TeamDetail() {
                     )}
                   </BarChart>
                 </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* Contribution Share Pie Charts */}
+            {chartData.length > 0 && (
+              <div className="contributions-chart-section">
+                <div className="chart-header">
+                  <h3>Contribution Share by Team Member</h3>
+                </div>
+                <div className="pie-charts-grid">
+                  {/* PRs Pie Chart */}
+                  {pieChartData.prs.length > 0 && (
+                    <div className="pie-chart-container">
+                      <h4 style={{ color: '#0969da', textAlign: 'center', marginBottom: '0.5rem' }}>PRs</h4>
+                      <ResponsiveContainer width="100%" height={250}>
+                        <PieChart>
+                          <Pie
+                            data={pieChartData.prs}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={80}
+                            label={({ name, percentage }) => `${name}: ${percentage}%`}
+                            labelLine={{ stroke: '#666', strokeWidth: 1 }}
+                          >
+                            {pieChartData.prs.map((entry, index) => (
+                              <Cell key={`cell-prs-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value, name, props) => [`${value} (${props.payload.percentage}%)`, name]} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+
+                  {/* Commits Pie Chart */}
+                  {pieChartData.commits.length > 0 && (
+                    <div className="pie-chart-container">
+                      <h4 style={{ color: '#2da44e', textAlign: 'center', marginBottom: '0.5rem' }}>Commits</h4>
+                      <ResponsiveContainer width="100%" height={250}>
+                        <PieChart>
+                          <Pie
+                            data={pieChartData.commits}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={80}
+                            label={({ name, percentage }) => `${name}: ${percentage}%`}
+                            labelLine={{ stroke: '#666', strokeWidth: 1 }}
+                          >
+                            {pieChartData.commits.map((entry, index) => (
+                              <Cell key={`cell-commits-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value, name, props) => [`${value} (${props.payload.percentage}%)`, name]} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+
+                  {/* Reviews Pie Chart */}
+                  {pieChartData.reviews.length > 0 && (
+                    <div className="pie-chart-container">
+                      <h4 style={{ color: '#bf3989', textAlign: 'center', marginBottom: '0.5rem' }}>Reviews</h4>
+                      <ResponsiveContainer width="100%" height={250}>
+                        <PieChart>
+                          <Pie
+                            data={pieChartData.reviews}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={80}
+                            label={({ name, percentage }) => `${name}: ${percentage}%`}
+                            labelLine={{ stroke: '#666', strokeWidth: 1 }}
+                          >
+                            {pieChartData.reviews.map((entry, index) => (
+                              <Cell key={`cell-reviews-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value, name, props) => [`${value} (${props.payload.percentage}%)`, name]} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+
+                  {/* Total Contributions Pie Chart */}
+                  {pieChartData.total.length > 0 && (
+                    <div className="pie-chart-container">
+                      <h4 style={{ color: '#57606a', textAlign: 'center', marginBottom: '0.5rem' }}>Total Contributions</h4>
+                      <ResponsiveContainer width="100%" height={250}>
+                        <PieChart>
+                          <Pie
+                            data={pieChartData.total}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={80}
+                            label={({ name, percentage }) => `${name}: ${percentage}%`}
+                            labelLine={{ stroke: '#666', strokeWidth: 1 }}
+                          >
+                            {pieChartData.total.map((entry, index) => (
+                              <Cell key={`cell-total-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value, name, props) => [`${value} (${props.payload.percentage}%)`, name]} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
