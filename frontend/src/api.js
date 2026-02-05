@@ -319,12 +319,16 @@ class ApiClient {
     return this.request(endpoint, { ...options, method: 'DELETE' })
   }
 
-  // Authentication methods (these use direct backend URLs, not API_URL prefix)
-  // Auth routes are at /auth, not /api/auth, so we use the backend base URL
+  // Authentication methods (these use /auth routes)
+  // In development, Vite proxy handles /auth -> backend
+  // In production, we need the full backend URL
   getBackendBaseUrl() {
-    // Extract base URL from VITE_API_URL or use default
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001'
-    // Remove /api suffix if present
+    const apiUrl = import.meta.env.VITE_API_URL || '/api'
+    // If using relative URL (proxy), return empty string so /auth works
+    if (apiUrl.startsWith('/')) {
+      return ''
+    }
+    // Otherwise extract base URL from full API URL
     return apiUrl.replace(/\/api$/, '')
   }
 

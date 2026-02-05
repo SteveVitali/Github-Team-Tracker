@@ -1,5 +1,4 @@
 import express from 'express';
-import cors from 'cors';
 import session from 'express-session';
 import ConnectSqlite3 from 'connect-sqlite3';
 import helmet from 'helmet';
@@ -32,8 +31,11 @@ app.use((req, res, next) => {
     return next();
   }
 
-  // In development, allow any localhost port
-  if (process.env.NODE_ENV !== 'production' && origin.startsWith('http://localhost:')) {
+  // Allow any localhost port (for development) or the configured frontend URL
+  const isLocalhost = origin.startsWith('http://localhost:');
+  const isAllowedOrigin = isLocalhost || origin === config.FRONTEND_URL;
+
+  if (isAllowedOrigin) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -45,26 +47,8 @@ app.use((req, res, next) => {
     if (req.method === 'OPTIONS') {
       return res.status(204).end();
     }
-    return next();
   }
 
-  // In production, only allow the configured frontend URL
-  if (origin === config.FRONTEND_URL) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Expose-Headers', 'set-cookie');
-    res.setHeader('Vary', 'Origin');
-
-    // Handle preflight
-    if (req.method === 'OPTIONS') {
-      return res.status(204).end();
-    }
-    return next();
-  }
-
-  // Origin not allowed
   next();
 });
 

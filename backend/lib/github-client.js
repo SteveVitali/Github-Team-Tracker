@@ -24,6 +24,34 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Check if an error is actually a rate limit error (not just 403 permission denied)
+function isRateLimitError(error) {
+  // 429 is always rate limit
+  if (error.status === 429) {
+    return true;
+  }
+
+  // 403 could be rate limit OR permission denied
+  if (error.status === 403) {
+    // Check rate limit headers
+    const remaining = error.response?.headers?.['x-ratelimit-remaining'];
+    if (remaining === '0' || remaining === 0) {
+      return true;
+    }
+
+    // Check error message for rate limit indicators
+    const message = error.message?.toLowerCase() || '';
+    if (message.includes('rate limit') || message.includes('abuse detection')) {
+      return true;
+    }
+
+    // Not a rate limit - it's a permission/auth issue
+    return false;
+  }
+
+  return false;
+}
+
 // Retry function with exponential backoff
 async function retryWithBackoff(fn, retries = config.MAX_RETRIES, backoff = config.INITIAL_BACKOFF_MS) {
   try {
@@ -33,8 +61,8 @@ async function retryWithBackoff(fn, retries = config.MAX_RETRIES, backoff = conf
       throw error;
     }
 
-    // Check if it's a rate limit error
-    if (error.status === 403 || error.status === 429) {
+    // Check if it's a rate limit error (not permission denied)
+    if (isRateLimitError(error)) {
       const waitTime = error.response?.headers?.['retry-after']
         ? parseInt(error.response.headers['retry-after']) * 1000
         : backoff;
@@ -43,6 +71,15 @@ async function retryWithBackoff(fn, retries = config.MAX_RETRIES, backoff = conf
       console.log(`⏳ Rate limit hit, waiting ${Math.round(waitTime / 1000)}s before retry... [active: ${state.active}/${state.max}, queued: ${state.queued}]`);
       await sleep(waitTime);
       return retryWithBackoff(fn, retries - 1, backoff * 2);
+    }
+
+    // For 403 that's NOT rate limit, log helpful message and throw
+    if (error.status === 403) {
+      console.error(`❌ Permission denied (403): ${error.message}`);
+      console.error(`   This usually means:`);
+      console.error(`   - Token missing required scopes (need: read:org, repo)`);
+      console.error(`   - SSO authorization required for this org`);
+      console.error(`   - Token has been revoked or is invalid`);
     }
 
     // For other errors, throw immediately
@@ -216,9 +253,11 @@ export async function getUserPullRequests(org, username, token = null) {
 
     return response.data.items;
   } catch (error) {
-    if (error.status === 403 || error.status === 429) {
+    if (isRateLimitError(error)) {
       const state = getConcurrencyState();
       console.error(`⚠️  Rate limit exceeded for user ${username}, skipping... [active: ${state.active}/${state.max}, queued: ${state.queued}]`);
+    } else if (error.status === 403) {
+      console.error(`⚠️  Permission denied for user ${username}: ${error.message}`);
     } else {
       console.error(`Error fetching PRs for user ${username}:`, error.message);
     }
